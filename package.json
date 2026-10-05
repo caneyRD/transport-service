@@ -1,0 +1,26 @@
+{
+  "name": "transport-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BANEY Transporte bounded context backend",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
+  },
+  "engines": { "node": ">=18.18.0" },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
+  }
+}
