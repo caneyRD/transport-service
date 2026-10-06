@@ -2,6 +2,8 @@ import { AggregateRoot } from '../shared/aggregate-root';
 import { DomainError } from '../shared/domain-error';
 import { Location } from './value-objects/location';
 import { TimeWindow } from './value-objects/time-window';
+import { transportEvent } from './events';
+import { Cargo } from './cargo';
 
 export enum TransportRequestStatus {
   DRAFT = 'DRAFT',
@@ -12,12 +14,6 @@ export enum TransportRequestStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
-}
-
-export interface Cargo {
-  readonly description: string;
-  readonly weightKg?: number;
-  readonly volumeM3?: number;
 }
 
 export interface TransportRequestProps {
@@ -51,10 +47,10 @@ export class TransportRequest extends AggregateRoot {
   static create(props: TransportRequestProps): TransportRequest {
     if (!props.id.trim()) throw new DomainError('Transport request id is required');
     if (!props.requesterId.trim()) throw new DomainError('Requester id is required');
-    if (!props.cargo.description.trim()) throw new DomainError('Cargo description is required');
-    if (props.cargo.weightKg !== undefined && props.cargo.weightKg <= 0) throw new DomainError('Cargo weight must be positive');
-    if (props.cargo.volumeM3 !== undefined && props.cargo.volumeM3 <= 0) throw new DomainError('Cargo volume must be positive');
-    return new TransportRequest(props);
+    if (!(props.cargo instanceof Cargo)) throw new DomainError('Transport request requires a valid Cargo value');
+    const request = new TransportRequest(props);
+    request.addCreatedEvent();
+    return request;
   }
 
   get currentStatus(): TransportRequestStatus { return this.status; }
@@ -67,9 +63,16 @@ export class TransportRequest extends AggregateRoot {
     if (!assignmentId.trim()) throw new DomainError('Assignment id is required');
     this.activeAssignmentId = assignmentId;
     this.transitionTo(TransportRequestStatus.ASSIGNED);
+    this.addEvent('TransportAssigned', { assignmentId });
   }
-  startTrip(): void { this.transitionTo(TransportRequestStatus.IN_PROGRESS); }
-  complete(): void { this.transitionTo(TransportRequestStatus.COMPLETED); }
+  startTrip(): void {
+    this.transitionTo(TransportRequestStatus.IN_PROGRESS);
+    this.addEvent('TripStarted', { assignmentId: this.activeAssignmentId });
+  }
+  complete(): void {
+    this.transitionTo(TransportRequestStatus.COMPLETED);
+    this.addEvent('TripCompleted', { assignmentId: this.activeAssignmentId });
+  }
   cancel(): void { this.transitionTo(TransportRequestStatus.CANCELLED); }
 
   private transitionTo(next: TransportRequestStatus): void {
@@ -77,5 +80,13 @@ export class TransportRequest extends AggregateRoot {
       throw new DomainError(`Invalid transport request transition: ${this.status} -> ${next}`);
     }
     this.status = next;
+  }
+
+  private addCreatedEvent(): void {
+    this.addDomainEvent(transportEvent('TransportRequestCreated', this.props.id, 'TransportRequest', 1, this.props.id, { requesterId: this.props.requesterId }));
+  }
+
+  private addEvent(type: Parameters<typeof transportEvent>[0], data: Record<string, unknown>): void {
+    this.addDomainEvent(transportEvent(type, this.props.id, 'TransportRequest', this.currentVersion + 1, this.props.id, data));
   }
 }

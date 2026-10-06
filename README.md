@@ -6,9 +6,10 @@ Backend del bounded context **Transporte** de BANEY.
 
 Este repositorio implementa el dominio de Transporte. No contiene frontend ni reglas de Identidad, Marketplace, Pagos o Facturación.
 
-El agregado inicial es `TransportRequest`, con las entidades y conceptos que crecerán alrededor de él:
+El agregado raíz es `TransportRequest`, con las entidades y conceptos del primer modelo de Transporte:
 
 - `Cargo`
+- `Route`
 - `TransportOffer`
 - `Assignment`
 - `Trip`
@@ -17,6 +18,17 @@ El agregado inicial es `TransportRequest`, con las entidades y conceptos que cre
 - `TrackingPoint`
 - `PricingRule`
 - `TransportException`
+
+Las cantidades conservan unidades explícitas mediante `Weight` (kg), `Volume` (m3) y `Distance` (km).
+
+El modelo también implementa:
+
+- `TransportOffer` con envío, aceptación, rechazo y retiro.
+- `MatchingCandidate` con puntuación normalizada para el proceso de matching.
+- `Assignment` con validación de transportista y vehículo habilitados.
+- `Trip` con inicio, finalización y cancelación explícitos.
+- Eventos `TransportRequestCreated`, `TransportAssigned`, `TripStarted` y `TripCompleted`.
+- Evento `TrackingUpdated` emitido por el agregado `Trip` con versionado por viaje.
 
 ## Estados de `TransportRequest`
 
