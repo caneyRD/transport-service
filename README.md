@@ -30,6 +30,12 @@ El modelo también implementa:
 - Eventos `TransportRequestCreated`, `TransportAssigned`, `TripStarted` y `TripCompleted`.
 - Evento `TrackingUpdated` emitido por el agregado `Trip` con versionado por viaje.
 
+## Casos de uso implementados
+
+- `UC-TRA-01`: Crear solicitud de transporte.
+
+Este caso de uso crea una solicitud válida, la deja en estado `OPEN` y persiste mediante un puerto de repositorio. Actualmente se incluye únicamente un adaptador en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
+
 ## Estados de `TransportRequest`
 
 `DRAFT -> OPEN -> MATCHING -> OFFERED -> ASSIGNED -> IN_PROGRESS -> COMPLETED`

@@ -17,3 +17,6 @@ export * from './domain/transport/value-objects/location';
 export * from './domain/transport/value-objects/time-window';
 export * from './domain/transport/value-objects/money';
 export * from './domain/transport/value-objects/quantities';
+export * from './application/transport/create-transport-request';
+export * from './application/transport/ports/transport-request.repository';
+export * from './infrastructure/in-memory/transport-request-in-memory.repository';
