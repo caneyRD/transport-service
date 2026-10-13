@@ -33,6 +33,7 @@ El modelo también implementa:
 ## Casos de uso implementados
 
 - `UC-TRA-01`: Crear solicitud de transporte.
+- `UC-TRA-02`: Seleccionar tipo de carga.
 
 Este caso de uso crea una solicitud válida, la deja en estado `OPEN` y persiste mediante un puerto de repositorio. Actualmente se incluye únicamente un adaptador en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
 

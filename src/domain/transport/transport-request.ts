@@ -4,6 +4,7 @@ import { Location } from './value-objects/location';
 import { TimeWindow } from './value-objects/time-window';
 import { transportEvent } from './events';
 import { Cargo } from './cargo';
+import { CargoType } from './cargo';
 
 export enum TransportRequestStatus {
   DRAFT = 'DRAFT',
@@ -54,6 +55,13 @@ export class TransportRequest extends AggregateRoot {
   }
 
   get currentStatus(): TransportRequestStatus { return this.status; }
+
+  selectCargoType(type: CargoType): void {
+    if (this.status !== TransportRequestStatus.OPEN) {
+      throw new DomainError('Cargo type can only be selected for an open request');
+    }
+    this.props.cargo.selectType(type);
+  }
 
   open(): void { this.transitionTo(TransportRequestStatus.OPEN); }
   startMatching(): void { this.transitionTo(TransportRequestStatus.MATCHING); }
