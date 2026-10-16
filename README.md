@@ -37,6 +37,8 @@ El modelo también implementa:
 
 Este caso de uso crea una solicitud válida, la deja en estado `OPEN` y persiste mediante un puerto de repositorio. Actualmente se incluye únicamente un adaptador en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
 
+El esquema lógico propuesto para la futura base de datos está documentado en [`docs/transport-data-schema.md`](./docs/transport-data-schema.md). Todavía requiere revisión del equipo de DB/DevOps antes de crear migraciones.
+
 ## Estados de `TransportRequest`
 
 `DRAFT -> OPEN -> MATCHING -> OFFERED -> ASSIGNED -> IN_PROGRESS -> COMPLETED`
