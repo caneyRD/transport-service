@@ -7,6 +7,9 @@ Alcance: diseño lógico para revisión del equipo; no crea migraciones ni una b
 Revisión incorporada: hallazgos y decisiones de consistencia del 13 de octubre de 2026. Las decisiones del
 documento fuente siguen siendo propuestas hasta que Arquitectura, DB/DevOps y Negocio las aprueben.
 
+La plantilla SQL inicial está en [`database/schema.sql`](../database/schema.sql). Se entrega como esquema base,
+no como migración aplicada.
+
 ## 1. Criterios del diseño
 
 - Transporte es dueño de sus propias tablas e invariantes.

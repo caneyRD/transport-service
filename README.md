@@ -39,6 +39,8 @@ Este caso de uso crea una solicitud válida, la deja en estado `OPEN` y persiste
 
 El esquema lógico propuesto para la futura base de datos está documentado en [`docs/transport-data-schema.md`](./docs/transport-data-schema.md). Incluye la revisión de consistencia del 13 de octubre y todavía requiere aprobación del equipo de Arquitectura/DB/DevOps antes de crear migraciones.
 
+La definición SQL base para PostgreSQL está en [`database/schema.sql`](./database/schema.sql). Es una base inicial para revisión; debe convertirse en migraciones versionadas después de aprobar las decisiones pendientes.
+
 ## Estados de `TransportRequest`
 
 `DRAFT -> OPEN -> MATCHING -> OFFERED -> ASSIGNED -> IN_PROGRESS -> COMPLETED`
