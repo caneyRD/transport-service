@@ -24,6 +24,9 @@ export class Cargo {
   get cargoType(): CargoType | undefined { return this.type; }
 
   selectType(type: CargoType): void {
+    if (!Object.values(CargoType).includes(type)) {
+      throw new DomainError('Invalid cargo type');
+    }
     this.type = type;
   }
 }

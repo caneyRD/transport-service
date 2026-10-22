@@ -24,7 +24,7 @@ describe('UC-TRA-01 Create transport request', () => {
     expect(result.currentStatus).toBe(TransportRequestStatus.OPEN);
     expect(result.props.requesterId).toBe('user-1');
     expect(await repository.findById('request-1')).toBe(result);
-    expect(result.pullDomainEvents().map((event) => event.type)).toEqual(['TransportRequestCreated']);
+    expect(result.pullDomainEvents().map((event) => event.type)).toEqual(['TransportRequestCreated', 'TransportRequestOpened']);
   });
 
   it('rejects invalid input through the domain rules', async () => {

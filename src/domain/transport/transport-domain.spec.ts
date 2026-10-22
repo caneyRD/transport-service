@@ -4,8 +4,8 @@ import { DriverProfile } from './driver-profile';
 import { TrackingPoint } from './tracking-point';
 import { Trip, TripStatus } from './trip';
 import { TransportException, TransportExceptionType } from './transport-exception';
-import { TransportOffer, TransportOfferStatus } from './transport-offer';
-import { Vehicle } from './vehicle';
+import { OfferActor, TransportOffer, TransportOfferStatus } from './transport-offer';
+import { Vehicle, VehicleBodyType, VehicleCapacityUnit } from './vehicle';
 import { Route } from './route';
 import { Location } from './value-objects/location';
 import { Money } from './value-objects/money';
@@ -24,7 +24,7 @@ describe('Transport domain', () => {
     offer.submit();
     offer.accept();
     expect(offer.currentStatus).toBe(TransportOfferStatus.ACCEPTED);
-    expect(offer.pullDomainEvents().map((event) => event.type)).toEqual(['TransportOfferSubmitted']);
+    expect(offer.pullDomainEvents().map((event) => event.type)).toEqual(['TransportOfferSubmitted', 'TransportOfferAccepted']);
   });
 
   it('requires enabled driver and vehicle for assignment', () => {
@@ -41,7 +41,7 @@ describe('Transport domain', () => {
     trip.complete();
     expect(trip.currentStatus).toBe(TripStatus.COMPLETED);
     expect(assignment.currentStatus).toBe(AssignmentStatus.ACTIVE);
-    expect(trip.pullDomainEvents().map((event) => event.type)).toEqual(['TrackingUpdated']);
+    expect(trip.pullDomainEvents().map((event) => event.type)).toEqual(['TripStarted', 'TrackingUpdated', 'TripCompleted']);
   });
 
   it('rejects tracking points with missing identity', () => {
@@ -63,6 +63,49 @@ describe('Transport domain', () => {
     const candidate = MatchingCandidate.create({ id: 'candidate-1', requestId: 'request-1', carrierId: 'carrier-1', vehicleId: 'vehicle-1', score: 0.85 });
     expect(candidate.score).toBe(0.85);
     expect(() => MatchingCandidate.create({ id: 'candidate-2', requestId: 'request-1', carrierId: 'carrier-1', vehicleId: 'vehicle-1', score: 2 })).toThrow(DomainError);
+  });
+
+  it('normalizes vehicle registration numbers and preserves capacity units', () => {
+    const vehicle = Vehicle.create({
+      id: 'vehicle-2',
+      ownerId: 'carrier-1',
+      registrationNumber: ' a-123 456 ',
+      capacityKg: 12000,
+      bodyType: VehicleBodyType.DUMP_TRUCK,
+      capacityValue: 12,
+      capacityUnit: VehicleCapacityUnit.M3,
+    });
+    expect(vehicle.registrationNumberNormalized).toBe('A123456');
+    expect(vehicle.capacityValue).toBe(12);
+    expect(vehicle.capacityUnit).toBe('M3');
+  });
+
+  it('supports counteroffers and expiration events', () => {
+    const offer = TransportOffer.create({
+      id: 'offer-2', requestId: 'request-1', carrierId: 'carrier-1',
+      price: Money.create(1500, 'DOP'), validUntil: new Date(Date.now() + 60_000),
+    });
+    offer.submit();
+    const counter = offer.counter({
+      id: 'offer-3', price: Money.create(1700, 'DOP'), validUntil: new Date(Date.now() + 60_000),
+      proposedBy: OfferActor.CLIENT,
+    });
+    expect(offer.currentStatus).toBe(TransportOfferStatus.COUNTERED);
+    expect(counter.currentStatus).toBe(TransportOfferStatus.SUBMITTED);
+    expect(counter.parentOfferId).toBe('offer-2');
+    expect(counter.round).toBe(1);
+    expect(counter.pullDomainEvents().map((event) => event.type)).toEqual(['TransportOfferSubmitted']);
+
+    const expiring = TransportOffer.create({
+      id: 'offer-4', requestId: 'request-1', carrierId: 'carrier-1',
+      price: Money.create(1800, 'DOP'), validUntil: new Date(Date.now() + 60_000),
+    });
+    expiring.submit();
+    expect(expiring.expire(new Date(Date.now() + 120_000))).toBe(true);
+    expect(expiring.currentStatus).toBe(TransportOfferStatus.EXPIRED);
+    expect(expiring.pullDomainEvents().map((event) => event.type)).toEqual([
+      'TransportOfferSubmitted', 'TransportOfferExpired',
+    ]);
   });
 
   it('requires a description for transport exceptions', () => {

@@ -33,10 +33,12 @@ export class Trip extends AggregateRoot {
   start(): void {
     if (this.status !== TripStatus.PLANNED) throw new DomainError('Only a planned trip can start');
     this.status = TripStatus.IN_PROGRESS;
+    this.addEvent('TripStarted', {});
   }
   complete(): void {
     if (this.status !== TripStatus.IN_PROGRESS) throw new DomainError('Only an in-progress trip can complete');
     this.status = TripStatus.COMPLETED;
+    this.addEvent('TripCompleted', {});
   }
 
   recordTrackingPoint(point: TrackingPoint): void {
@@ -56,5 +58,10 @@ export class Trip extends AggregateRoot {
   cancel(): void {
     if (this.status === TripStatus.COMPLETED || this.status === TripStatus.CANCELLED) throw new DomainError('Trip cannot be cancelled in its current state');
     this.status = TripStatus.CANCELLED;
+    this.addEvent('TripCancelled', {});
+  }
+
+  private addEvent(type: Parameters<typeof transportEvent>[0], data: Record<string, unknown>): void {
+    this.addDomainEvent(transportEvent(type, this.id, 'Trip', this.currentVersion + 1, this.requestId, data));
   }
 }

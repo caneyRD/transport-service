@@ -31,7 +31,7 @@ const transitions: Record<TransportRequestStatus, TransportRequestStatus[]> = {
   OPEN: [TransportRequestStatus.MATCHING, TransportRequestStatus.OFFERED, TransportRequestStatus.CANCELLED],
   MATCHING: [TransportRequestStatus.OFFERED, TransportRequestStatus.ASSIGNED, TransportRequestStatus.CANCELLED],
   OFFERED: [TransportRequestStatus.MATCHING, TransportRequestStatus.ASSIGNED, TransportRequestStatus.CANCELLED],
-  ASSIGNED: [TransportRequestStatus.IN_PROGRESS, TransportRequestStatus.CANCELLED],
+  ASSIGNED: [TransportRequestStatus.IN_PROGRESS, TransportRequestStatus.MATCHING, TransportRequestStatus.CANCELLED],
   IN_PROGRESS: [TransportRequestStatus.COMPLETED, TransportRequestStatus.CANCELLED],
   COMPLETED: [],
   CANCELLED: [],
@@ -55,6 +55,7 @@ export class TransportRequest extends AggregateRoot {
   }
 
   get currentStatus(): TransportRequestStatus { return this.status; }
+  get currentAssignmentId(): string | undefined { return this.activeAssignmentId; }
 
   selectCargoType(type: CargoType): void {
     if (this.status !== TransportRequestStatus.OPEN) {
@@ -63,25 +64,47 @@ export class TransportRequest extends AggregateRoot {
     this.props.cargo.selectType(type);
   }
 
-  open(): void { this.transitionTo(TransportRequestStatus.OPEN); }
-  startMatching(): void { this.transitionTo(TransportRequestStatus.MATCHING); }
-  markOffered(): void { this.transitionTo(TransportRequestStatus.OFFERED); }
+  open(): void {
+    this.transitionTo(TransportRequestStatus.OPEN);
+    this.addEvent('TransportRequestOpened', {});
+  }
+  startMatching(): void {
+    if (!this.props.cargo.cargoType) {
+      throw new DomainError('Cargo type is required before matching');
+    }
+    this.transitionTo(TransportRequestStatus.MATCHING);
+    this.addEvent('TransportMatchingStarted', {});
+  }
+  markOffered(): void {
+    this.transitionTo(TransportRequestStatus.OFFERED);
+    this.addEvent('TransportRequestOffered', {});
+  }
   assign(assignmentId: string): void {
     if (this.activeAssignmentId) throw new DomainError('Transport request already has an active assignment');
     if (!assignmentId.trim()) throw new DomainError('Assignment id is required');
-    this.activeAssignmentId = assignmentId;
     this.transitionTo(TransportRequestStatus.ASSIGNED);
+    this.activeAssignmentId = assignmentId;
     this.addEvent('TransportAssigned', { assignmentId });
   }
   startTrip(): void {
     this.transitionTo(TransportRequestStatus.IN_PROGRESS);
-    this.addEvent('TripStarted', { assignmentId: this.activeAssignmentId });
+    this.addEvent('TransportRequestInProgress', { assignmentId: this.activeAssignmentId });
   }
   complete(): void {
     this.transitionTo(TransportRequestStatus.COMPLETED);
-    this.addEvent('TripCompleted', { assignmentId: this.activeAssignmentId });
+    this.addEvent('TransportRequestCompleted', { assignmentId: this.activeAssignmentId });
   }
-  cancel(): void { this.transitionTo(TransportRequestStatus.CANCELLED); }
+  cancel(): void {
+    this.transitionTo(TransportRequestStatus.CANCELLED);
+    this.addEvent('TransportRequestCancelled', { assignmentId: this.activeAssignmentId });
+  }
+  releaseAssignment(): void {
+    if (!this.activeAssignmentId) throw new DomainError('Transport request has no active assignment');
+    this.transitionTo(TransportRequestStatus.MATCHING);
+    const assignmentId = this.activeAssignmentId;
+    this.activeAssignmentId = undefined;
+    this.addEvent('TransportRequestAssignmentReleased', { assignmentId });
+  }
 
   private transitionTo(next: TransportRequestStatus): void {
     if (!transitions[this.status].includes(next)) {

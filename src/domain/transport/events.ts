@@ -1,12 +1,26 @@
 import { DomainEvent } from '../shared/aggregate-root';
+import { randomUUID } from 'node:crypto';
 
 export type TransportDomainEvent = DomainEvent & {
   readonly type:
     | 'TransportRequestCreated'
+    | 'TransportRequestOpened'
+    | 'TransportMatchingStarted'
+    | 'TransportRequestOffered'
+    | 'TransportRequestCancelled'
+    | 'TransportRequestAssignmentReleased'
     | 'TransportOfferSubmitted'
+    | 'TransportOfferAccepted'
+    | 'TransportOfferRejected'
+    | 'TransportOfferWithdrawn'
+    | 'TransportOfferCountered'
+    | 'TransportOfferExpired'
     | 'TransportAssigned'
     | 'TripStarted'
     | 'TripCompleted'
+    | 'TripCancelled'
+    | 'TransportRequestInProgress'
+    | 'TransportRequestCompleted'
     | 'TrackingUpdated';
 };
 
@@ -20,12 +34,13 @@ export function transportEvent(
 ): TransportDomainEvent {
   return {
     type,
-    eventId: crypto.randomUUID(),
+    eventId: randomUUID(),
     occurredAt: new Date(),
     aggregateId,
     aggregateType,
     version,
     correlationId,
-    ...data,
+    schemaVersion: 1,
+    payload: data,
   };
 }

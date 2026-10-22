@@ -9,7 +9,7 @@ describe('UC-TRA-02 Select cargo type', () => {
     const repository = new InMemoryTransportRequestRepository();
     const create = new CreateTransportRequestHandler(repository, () => 'request-1');
     const select = new SelectCargoTypeHandler(repository);
-    const request = await create.execute({
+    await create.execute({
       requesterId: 'user-1',
       cargo: { description: 'Construction materials', weightKg: 500 },
       origin: { address: 'Santo Domingo', latitude: 18.48, longitude: -69.93 },

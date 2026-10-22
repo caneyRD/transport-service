@@ -1,11 +1,13 @@
 export interface DomainEvent {
-  readonly type?: string;
+  readonly type: string;
   readonly eventId: string;
   readonly occurredAt: Date;
   readonly aggregateId: string;
   readonly aggregateType: string;
   readonly version: number;
   readonly correlationId: string;
+  readonly schemaVersion: number;
+  readonly payload: Readonly<Record<string, unknown>>;
 }
 
 export abstract class AggregateRoot {
