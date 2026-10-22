@@ -19,5 +19,8 @@ export * from './domain/transport/value-objects/money';
 export * from './domain/transport/value-objects/quantities';
 export * from './application/transport/create-transport-request';
 export * from './application/transport/select-cargo-type';
+export * from './application/transport/find-nearby-trucks';
 export * from './application/transport/ports/transport-request.repository';
+export * from './application/transport/ports/matching-candidate.repository';
 export * from './infrastructure/in-memory/transport-request-in-memory.repository';
+export * from './infrastructure/in-memory/matching-candidate-in-memory.repository';
