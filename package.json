@@ -5,6 +5,8 @@
   "description": "BANEY Transporte bounded context backend",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "npm run build && node dist/main.js",
+    "start:dev": "npm run build && node --watch dist/main.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
