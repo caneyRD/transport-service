@@ -33,4 +33,16 @@ describe('UC-TRA-01 Create transport request', () => {
     await expect(handler.execute({ ...command, cargo: { description: '', weightKg: 500 } })).rejects.toThrow(DomainError);
     await expect(handler.execute({ ...command, origin: { ...command.origin, latitude: 100 } })).rejects.toThrow(DomainError);
   });
+
+  it('returns the existing request for a repeated idempotency key', async () => {
+    const repository = new InMemoryTransportRequestRepository();
+    let sequence = 0;
+    const handler = new CreateTransportRequestHandler(repository, () => `request-${++sequence}`);
+
+    const first = await handler.execute({ ...command, idempotencyKey: 'checkout-1' });
+    const repeated = await handler.execute({ ...command, idempotencyKey: 'checkout-1' });
+
+    expect(repeated).toBe(first);
+    expect(sequence).toBe(1);
+  });
 });

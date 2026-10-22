@@ -22,5 +22,8 @@ export * from './application/transport/select-cargo-type';
 export * from './application/transport/find-nearby-trucks';
 export * from './application/transport/ports/transport-request.repository';
 export * from './application/transport/ports/matching-candidate.repository';
+export * from './application/transport/ports/transport-domain-outbox';
 export * from './infrastructure/in-memory/transport-request-in-memory.repository';
 export * from './infrastructure/in-memory/matching-candidate-in-memory.repository';
+export * from './infrastructure/in-memory/transport-domain-outbox-in-memory';
+export * from './infrastructure/in-memory/processed-events-in-memory';

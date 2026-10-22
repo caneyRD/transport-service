@@ -4,10 +4,12 @@ import { Location } from '../../domain/transport/value-objects/location';
 import { TimeWindow } from '../../domain/transport/value-objects/time-window';
 import { Volume, Weight } from '../../domain/transport/value-objects/quantities';
 import { TransportRequest } from '../../domain/transport/transport-request';
+import { DomainError } from '../../domain/shared/domain-error';
 import { TransportRequestRepository } from './ports/transport-request.repository';
 
 export interface CreateTransportRequestCommand {
   readonly requesterId: string;
+  readonly idempotencyKey?: string;
   readonly cargo: {
     readonly description: string;
     readonly weightKg?: number;
@@ -36,6 +38,13 @@ export class CreateTransportRequestHandler {
   ) {}
 
   async execute(command: CreateTransportRequestCommand): Promise<TransportRequest> {
+    if (command.idempotencyKey !== undefined && !command.idempotencyKey.trim()) {
+      throw new DomainError('Idempotency key cannot be empty');
+    }
+    if (command.idempotencyKey) {
+      const existing = await this.repository.findByIdempotencyKey(command.requesterId, command.idempotencyKey);
+      if (existing) return existing;
+    }
     const cargo = Cargo.create({
       description: command.cargo.description,
       weight: command.cargo.weightKg === undefined ? undefined : Weight.create(command.cargo.weightKg),
@@ -52,7 +61,7 @@ export class CreateTransportRequestHandler {
 
     // UC-TRA-51 covers saving a draft. UC-TRA-01 creates an open request.
     request.open();
-    await this.repository.save(request);
+    await this.repository.save(request, undefined, command.idempotencyKey);
     return request;
   }
 }
