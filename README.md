@@ -34,8 +34,13 @@ El modelo también implementa:
 
 - `UC-TRA-01`: Crear solicitud de transporte.
 - `UC-TRA-02`: Seleccionar tipo de carga.
+- `UC-TRA-03`: Ver camiones cercanos disponibles.
+- `UC-TRA-04`: Ver ofertas recibidas.
+- `UC-TRA-05`: Aceptar oferta.
+- `UC-TRA-06`: Contraofertar precio.
+- `UC-TRA-07`: Cancelar solicitud.
 
-Este caso de uso crea una solicitud válida, la deja en estado `OPEN` y persiste mediante un puerto de repositorio. Actualmente se incluye únicamente un adaptador en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
+Los casos de uso crean y modifican solicitudes y ofertas mediante puertos de repositorio. Actualmente se incluyen adapters en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
 
 El esquema lógico propuesto para la futura base de datos está documentado en [`docs/transport-data-schema.md`](./docs/transport-data-schema.md). Incluye la revisión de consistencia del 13 de octubre y todavía requiere aprobación del equipo de Arquitectura/DB/DevOps antes de crear migraciones.
 

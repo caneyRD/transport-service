@@ -8,6 +8,10 @@ export class InMemoryTransportOfferRepository implements TransportOfferRepositor
     this.offers.set(offer.id, offer);
   }
 
+  async findById(id: string): Promise<TransportOffer | undefined> {
+    return this.offers.get(id);
+  }
+
   async findByRequestId(requestId: string): Promise<TransportOffer[]> {
     return [...this.offers.values()].filter((offer) => offer.requestId === requestId);
   }
