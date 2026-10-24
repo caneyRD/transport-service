@@ -1,0 +1,339 @@
+
+--- PAGE 1 ---
+Página 1
+ BANEY
+ Definición inicial del dominio
+ Documento de trabajo para revisión del Product Manager
+ Bounded contexts, entidades, agregados, invariantes y eventos de dominio
+ Estado: propuesta base para revisión del equipo
+ Fecha: 24 de septiembre de 2026
+Este documento define el lenguaje y los límites iniciales del sistema. No representa todavía el modelo final de base
+de datos ni el ERD.
+
+
+--- PAGE 2 ---
+BANEY - Definición inicial del dominio
+Página 2
+1. Propósito
+Este documento fija el lenguaje y los límites iniciales del dominio de BANEY antes de seguir agregando endpoints,
+tablas o casos de uso. La primera prioridad es Identidad + Usuario + Transporte, junto con persistencia,
+seguridad, observabilidad y auditoría. Marketplace queda como contexto relacionado, no como sustituto del
+dominio Transporte.
+2. Subdominios y bounded contexts
+Contexto
+Tipo
+Responsabilidad
+Repositorio actual
+Identidad y Acceso
+Supporting
+Registro, login, tokens,
+OAuth, 2FA, roles y sesiones
+authServiceCaney
+Usuario y Perfil
+Supporting
+Perfil, estado de cuenta,
+verificación y preferencias
+authServiceCaney
+Transporte
+Core
+Solicitudes, matching,
+ofertas, asignación, viaje,
+tracking, pricing y
+excepciones
+Pendiente de repositorio
+dedicado
+Marketplace
+Core relacionado
+Publicaciones, categorías,
+stock, subastas y pedidos
+urgentes
+martketplace-main
+Administración
+Supporting
+Gestión operativa, roles,
+estados y configuración
+Parcial en
+authServiceCaney
+Pagos y
+Facturación
+Supporting
+Intentos, pagos, reembolsos,
+facturas y conciliación
+Pendiente
+Notificaciones y
+Chat
+Supporting
+Eventos de comunicación,
+conversaciones y entrega
+Pendiente
+Disputas y Soporte
+Supporting
+Reclamos, tickets, resolución
+y evidencias
+Pendiente
+Riesgo, Auditoría y
+Cumplimiento
+Supporting
+Fraude, trazabilidad,
+privacidad, DGII y auditoría
+Pendiente
+Analytics
+Supporting
+Métricas, KPIs, reportes y
+exportaciones
+Pendiente
+Plataforma
+Generic
+DB, CI/CD, ambientes,
+observabilidad, secretos y
+contratos
+Parcial
+Regla de límites
+Cada contexto es dueño de sus invariantes y agregados. Los demás contextos consumen contratos o eventos, no
+acceden directamente a sus tablas internas. Las referencias externas usan identificadores estables y, cuando haga
+falta, proyecciones locales.
+3. Lenguaje ubicuo
+ Usuario: identidad registrada en la plataforma.
+ Rol: capacidad de autorización; no define por sí solo un comportamiento operativo.
+ Transportista: usuario o entidad habilitada para aceptar y ejecutar transporte.
+ Vehículo: medio habilitado para prestar un servicio de transporte.
+ Solicitud de transporte: necesidad con carga, origen, destino y condiciones.
+ Oferta: propuesta de un transportista para atender una solicitud.
+ Asignación: vínculo confirmado entre una solicitud y un transportista/vehículo.
+
+
+--- PAGE 3 ---
+BANEY - Definición inicial del dominio
+Página 3
+ Viaje: ejecución operacional de una asignación.
+ Tracking: posiciones y estados observables de un viaje.
+ Publicación: oferta de un producto o servicio en Marketplace.
+ Subasta: publicación con reglas de puja y cierre.
+ Puja: propuesta monetaria de un participante.
+ Pedido urgente: solicitud abierta con presupuesto y fecha requerida.
+ Pago: resultado de un intento de cobro asociado a una obligación comercial.
+ Disputa: reclamo formal que requiere investigación y resolución.
+ Evento de dominio: hecho relevante ocurrido dentro de un agregado.
+4. Agregados y entidades principales
+Identidad y Acceso
+Aggregate root: UserAccount
+ UserAccount: identidad, email, estado activo, rol y referencias de perfil.
+ Credential: contraseña o proveedor externo; nunca expone secretos.
+ Session: sesión activa, refresh token revocable, dispositivo y expiración.
+ EmailVerification, PasswordReset y TwoFactorConfiguration.
+Invariantes: email único; cuenta inactiva no inicia sesión; refresh token revocado no rota; cambio de contraseña
+revoca sesiones según la política definida.
+Usuario y Perfil
+Aggregate root: UserProfile
+ UserProfile: nombre, avatar, bio, metadatos y preferencias.
+ RoleAssignment: rol asignado con reglas de autorización.
+ AccountStatusChange: historial de activación o desactivación.
+El perfil no almacena credenciales ni decide reglas de autenticación.
+Transporte
+Aggregate root: TransportRequest
+ TransportRequest: solicitante, carga, origen, destino, ventanas de tiempo, requisitos y estado.
+ Cargo, Location, TransportOffer, MatchingCandidate, Assignment y Trip.
+ Vehicle, DriverProfile, Route, TrackingPoint, PricingRule y TransportException.
+Estados mínimos propuestos: DRAFT, OPEN, MATCHING, OFFERED, ASSIGNED, IN_PROGRESS, COMPLETED,
+CANCELLED.
+Invariantes: una solicitud no tiene dos asignaciones activas; una asignación requiere transportista y vehículo
+habilitados; un viaje no inicia sin asignación; las transiciones son explícitas y auditables.
+Marketplace
+Aggregate roots: Publication, Auction, UrgentRequest, Category
+ Publication: título, descripción, productor, tipo, precio, stock, disponibilidad y estado.
+ Category: categoría y relación jerárquica.
+ Auction: publicación subastable, precio inicial, vigencia, cierre y ganador.
+
+
+--- PAGE 4 ---
+BANEY - Definición inicial del dominio
+Página 4
+ Bid: participante, monto y timestamp.
+ UrgentRequest: necesidad abierta con presupuesto, requester y estado.
+ PublicationImage: imagen ordenada de una publicación.
+Invariantes: stock no negativo; una puja supera la vigente; una subasta cerrada no acepta pujas; una publicación
+eliminada no vuelve a estar disponible sin operación explícita.
+Pagos y transversales
+Entidades previstas: PaymentIntent, PaymentTransaction, Invoice, Notification, Conversation,
+Message, Dispute, SupportTicket, RiskAssessment y AuditEntry. No deben entrar en el primer modelo
+de Transporte hasta que exista una regla de negocio concreta que las necesite.
+5. Value objects iniciales
+UserId, TransportRequestId, TripId, PublicationId, AuctionId, EmailAddress, Money, DateRange,
+TimeWindow, Location, StockQuantity, Weight, Volume, Distance, TokenHash y DeviceFingerprint.
+Money siempre incluye monto y moneda. Las cantidades de stock, peso, volumen y distancia deben conservar
+unidades explícitas.
+6. Eventos de dominio iniciales
+UserRegistered, EmailVerified, UserLoggedIn, SessionRevoked, TransportRequestCreated,
+TransportOfferSubmitted, TransportAssigned, TripStarted, TripCompleted, TrackingUpdated,
+PublicationCreated, StockAdjusted, AuctionClosed, PaymentAuthorized, PaymentFailed y
+DisputeOpened.
+Todo evento debe incluir eventId, occurredAt, aggregateId, aggregateType, version y
+correlationId. Nunca debe transportar contraseñas, tokens ni datos sensibles innecesarios.
+7.5 Cobertura de todos los módulos del cronograma
+La siguiente matriz completa la definición para los 14 módulos del catálogo F1 y los módulos calendarizados de F2.
+Son entidades candidatas: antes de implementarlas deben confirmarse sus reglas y el contexto dueño. No significa
+que cada módulo deba ser un microservicio separado.
+Módulo del cronograma
+Entidades de dominio candidatas
+Contexto dueño
+Auth Service
+UserAccount, Credential, Session,
+OAuthIdentity, EmailVerification,
+PasswordReset,
+TwoFactorConfiguration
+Identidad y Acceso
+User Service
+UserProfile, Address, Contact,
+Onboarding, UserPreference
+Usuario y Perfil
+Transporte
+TransportRequest, Cargo,
+TransportOffer, Assignment, Trip,
+Vehicle, DriverProfile, Route,
+TrackingPoint, PricingRule,
+TransportException
+Transporte
+Despacho
+DispatchJob, DispatchBoard,
+DriverAvailability,
+DispatchDecision
+Transporte
+Mercado / Marketplace
+Publication, Category, Auction, Bid,
+UrgentRequest, PublicationImage,
+Cart, Order
+Marketplace
+Payment Service
+PaymentIntent,
+PaymentTransaction,
+PaymentMethod, Refund
+Pagos
+
+
+--- PAGE 5 ---
+BANEY - Definición inicial del dominio
+Página 5
+Módulo del cronograma
+Entidades de dominio candidatas
+Contexto dueño
+Billing Service
+BillingAccount, Invoice,
+CreditNote, BillingPeriod
+Facturación
+Caja
+CashRegister, CashSession,
+CashMovement, Settlement
+Caja / Finanzas
+Notification Service
+Notification,
+NotificationTemplate,
+DeliveryAttempt,
+NotificationPreference
+Notificaciones
+Chat Service
+Conversation, Participant,
+Message, Attachment
+Comunicación
+Admin Service
+RoleAssignment, AdminAction,
+AccountStatusChange, FeatureFlag
+Administración
+Analytics Service
+MetricDefinition, MetricEvent,
+Dashboard, Report, ExportJob
+Analytics
+DGII
+Taxpayer, FiscalSequence,
+TaxDocument, FiscalSubmission
+Cumplimiento fiscal
+Escuela
+Course, Lesson, Enrollment,
+Assessment, Certification
+Educación
+Home / Cuenta
+AccountSummary, SavedAddress,
+AccountPreference,
+AccountActivity
+Usuario y Perfil
+Mapa
+MapLocation, Route, ETA, Geofence
+Transporte / Plataforma
+Disputas
+Dispute, Claim, Evidence,
+Resolution
+Disputas
+Soporte
+SupportTicket, SLA,
+TicketAssignment,
+SupportInteraction
+Soporte
+Fraude / Riesgo
+RiskAssessment, RiskRule,
+FraudCase, RiskDecision
+Riesgo
+Auditoría
+AuditEntry, AccessLog, DataChange
+Auditoría
+Configuración
+Configuration,
+ConfigurationVersion, FeatureFlag
+Plataforma / Administración
+Privacidad
+Consent, DataSubjectRequest,
+RetentionPolicy, DataAccessGrant
+Privacidad y Cumplimiento
+Cobertura y límites de esta matriz
+ Las entidades compartidas, como UserAccount, Money, Location y AuditEntry, deben exponerse como
+contratos o value objects; no como tablas compartidas sin dueño.
+ Order, Cart, CashRegister, TaxDocument, Course y DataSubjectRequest son candidatos que no están
+implementados en los repositorios actuales.
+ Transporte, Pagos, Facturación, DGII, Escuela, Mapa y los módulos de riesgo requieren decisiones de negocio
+antes de crear sus tablas.
+ La matriz cubre el inventario del cronograma, pero no reemplaza los criterios de aceptación de cada caso de uso.
+8. Mapeo al código actual
+authServiceCaney
+ prisma.user representa parcialmente UserAccount y UserProfile.
+ prisma.session y prisma.refreshtoken representan Session y tokens revocables.
+
+
+--- PAGE 6 ---
+BANEY - Definición inicial del dominio
+Página 6
+ Los módulos auth, users, sessions, admin, health y events son la base del contexto Identidad y Acceso.
+ La lógica de dominio debe separarse gradualmente de controladores, DTOs y Prisma.
+martketplace-main
+ Publication, Auction, UrgentRequest y Category ya aparecen como entidades y casos de uso de
+Marketplace.
+ Money, Stock, Availability y PublicationType son candidatos a value objects.
+ Los serializers no deben convertirse en dueños de las reglas de negocio.
+authService-master
+Es una implementación anterior de Identidad y Acceso. Se conserva como referencia, pero no debe convertirse en
+un segundo dueño del mismo dominio.
+9. Orden recomendado de implementación
+1. Aprobar lenguaje ubicuo y límites de contexto.
+ 
+2. Crear value objects e IDs en Identidad.
+ 
+3. Modelar UserAccount, Session y políticas de credenciales.
+ 
+4. Modelar Transporte: TransportRequest, TransportOffer, Assignment y Trip.
+ 
+5. Definir contratos entre Identidad, Transporte, Marketplace y Plataforma.
+ 
+6. Añadir persistencia mediante adaptadores, manteniendo el dominio independiente.
+ 
+7. Crear pruebas de invariantes antes de ampliar endpoints.
+ 
+8. Mapear los 426 casos del Excel a entidades/casos de uso antes de convertirlos en issues.
+ 
+10. Decisiones pendientes
+ Confirmar si Transporte será un servicio nuevo o se incorporará a un repositorio existente.
+ Confirmar si UserAccount y UserProfile permanecerán en el mismo bounded context.
+ Definir moneda oficial, redondeo, proveedor de mapas, tracking y ETA.
+ Definir si Marketplace y Transporte comparten catálogo o intercambian referencias.
+ Definir consistencia entre pagos, facturación y entregas.
+ Definir retención de auditoría, privacidad y datos personales.
+11. Criterio de terminado
+La definición queda aprobada cuando el equipo confirme contexto dueño, agregados, invariantes, eventos públicos,
+nombres del lenguaje ubicuo y decisiones pendientes con responsable. Cada caso del Excel debe vincularse a un
+agregado y bounded context antes de convertirse en issue de implementación.

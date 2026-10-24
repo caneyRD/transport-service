@@ -1,0 +1,21 @@
+services:
+  baney-schema-migrator:
+    image: postgres:18-bookworm
+    restart: "no"
+    entrypoint: ["/bin/sh", "/migration/migrate-existing.sh"]
+    environment:
+      DATABASE_HOST: ${DATABASE_HOST:?Set this to Dokploy Internal Host}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:?Set this to the existing database name}
+      DATABASE_USER: ${DATABASE_USER:?Set this to Dokploy Internal User}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set this to Dokploy Internal Password}
+    volumes:
+      - ./schema.sql:/migration/schema.sql:ro
+      - ./init/migrate-existing.sh:/migration/migrate-existing.sh:ro
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    name: ${DOKPLOY_NETWORK_NAME:-dokploy-network}
+    external: true

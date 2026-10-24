@@ -1,0 +1,295 @@
+﻿table,columns,target,target_columns,constraint,definition
+analytics.dashboard_metrics,dashboard_id,analytics.dashboards,id,dashboard_metrics_dashboard_id_fkey,FOREIGN KEY (dashboard_id) REFERENCES analytics.dashboards(id)
+analytics.dashboard_metrics,metric_code,analytics.metric_definitions,code,dashboard_metrics_metric_code_fkey,FOREIGN KEY (metric_code) REFERENCES analytics.metric_definitions(code)
+analytics.dashboards,owner_id,identity.users,id,dashboards_owner_id_fkey,FOREIGN KEY (owner_id) REFERENCES identity.users(id)
+analytics.export_jobs,report_id,analytics.reports,id,export_jobs_report_id_fkey,FOREIGN KEY (report_id) REFERENCES analytics.reports(id)
+analytics.export_jobs,requested_by,identity.users,id,export_jobs_requested_by_fkey,FOREIGN KEY (requested_by) REFERENCES identity.users(id)
+analytics.metric_events,metric_code,analytics.metric_definitions,code,metric_events_metric_code_fkey,FOREIGN KEY (metric_code) REFERENCES analytics.metric_definitions(code)
+analytics.reports,owner_id,identity.users,id,reports_owner_id_fkey,FOREIGN KEY (owner_id) REFERENCES identity.users(id)
+baney_billing.billing_accounts,user_id,identity.users,id,billing_accounts_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+baney_billing.cierre_contable,cerrado_por_uid,identity.users,id,fk_unified_052,FOREIGN KEY (cerrado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.comision,ref_suborden,baney_order.suborden,uid,comision_ref_suborden_fkey,FOREIGN KEY (ref_suborden) REFERENCES baney_order.suborden(uid)
+baney_billing.comision,ref_viaje,transport.trips,id,comision_ref_viaje_fkey,FOREIGN KEY (ref_viaje) REFERENCES transport.trips(id)
+baney_billing.comision,factura_id,baney_billing.factura,id,fk_comision_factura,FOREIGN KEY (factura_id) REFERENCES baney_billing.factura(id) ON DELETE SET NULL
+baney_billing.comision,regla_id,baney_billing.regla_comision,id,fk_comision_regla,FOREIGN KEY (regla_id) REFERENCES baney_billing.regla_comision(id) ON DELETE RESTRICT
+baney_billing.comision,obligado_uid,identity.users,id,fk_unified_049,FOREIGN KEY (obligado_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.comision,liquidacion_id,baney_billing.liquidacion,id,fk_unified_066,FOREIGN KEY (liquidacion_id) REFERENCES baney_billing.liquidacion(id) DEFERRABLE
+baney_billing.dgii_envio,factura_id,baney_billing.factura,id,fk_envio_factura,FOREIGN KEY (factura_id) REFERENCES baney_billing.factura(id) ON DELETE CASCADE
+baney_billing.factura,ref_comision,baney_billing.comision,uid,factura_ref_comision_fkey,FOREIGN KEY (ref_comision) REFERENCES baney_billing.comision(uid)
+baney_billing.factura,ref_liquidacion,baney_billing.liquidacion,uid,factura_ref_liquidacion_fkey,FOREIGN KEY (ref_liquidacion) REFERENCES baney_billing.liquidacion(uid)
+baney_billing.factura,ref_pedido,baney_order.pedido,uid,factura_ref_pedido_fkey,FOREIGN KEY (ref_pedido) REFERENCES baney_order.pedido(uid)
+baney_billing.factura,ref_suborden,baney_order.suborden,uid,factura_ref_suborden_fkey,FOREIGN KEY (ref_suborden) REFERENCES baney_order.suborden(uid)
+baney_billing.factura,ref_viaje,transport.trips,id,factura_ref_viaje_fkey,FOREIGN KEY (ref_viaje) REFERENCES transport.trips(id)
+baney_billing.factura,factura_origen_id,baney_billing.factura,id,fk_factura_origen,FOREIGN KEY (factura_origen_id) REFERENCES baney_billing.factura(id) ON DELETE RESTRICT
+baney_billing.factura,ncf_secuencia_id,baney_billing.ncf_secuencia,id,fk_factura_secuencia,FOREIGN KEY (ncf_secuencia_id) REFERENCES baney_billing.ncf_secuencia(id) ON DELETE RESTRICT
+baney_billing.factura,emisor_uid,identity.users,id,fk_unified_046,FOREIGN KEY (emisor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.factura,receptor_uid,identity.users,id,fk_unified_047,FOREIGN KEY (receptor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.factura_linea,factura_id,baney_billing.factura,id,fk_linea_factura,FOREIGN KEY (factura_id) REFERENCES baney_billing.factura(id) ON DELETE CASCADE
+baney_billing.liquidacion,beneficiario_uid,identity.users,id,fk_unified_050,FOREIGN KEY (beneficiario_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.liquidacion,payout_uid,baney_caja.payout,uid,fk_unified_051,FOREIGN KEY (payout_uid) REFERENCES baney_caja.payout(uid) DEFERRABLE
+baney_billing.liquidacion_linea,liquidacion_id,baney_billing.liquidacion,id,fk_liq_linea,FOREIGN KEY (liquidacion_id) REFERENCES baney_billing.liquidacion(id) ON DELETE CASCADE
+baney_billing.liquidacion_linea,ref_comision,baney_billing.comision,uid,liquidacion_linea_ref_comision_fkey,FOREIGN KEY (ref_comision) REFERENCES baney_billing.comision(uid)
+baney_billing.liquidacion_linea,ref_devolucion,baney_order.devolucion,uid,liquidacion_linea_ref_devolucion_fkey,FOREIGN KEY (ref_devolucion) REFERENCES baney_order.devolucion(uid)
+baney_billing.liquidacion_linea,ref_suborden,baney_order.suborden,uid,liquidacion_linea_ref_suborden_fkey,FOREIGN KEY (ref_suborden) REFERENCES baney_order.suborden(uid)
+baney_billing.liquidacion_linea,ref_viaje,transport.trips,id,liquidacion_linea_ref_viaje_fkey,FOREIGN KEY (ref_viaje) REFERENCES transport.trips(id)
+baney_billing.regla_comision,creado_por_uid,identity.users,id,fk_unified_048,FOREIGN KEY (creado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_billing.retencion,liquidacion_id,baney_billing.liquidacion,id,fk_retencion_liq,FOREIGN KEY (liquidacion_id) REFERENCES baney_billing.liquidacion(id) ON DELETE CASCADE
+baney_caja.auditoria,actor_uid,identity.users,id,fk_unified_060,FOREIGN KEY (actor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.auditoria,cuenta_id,baney_caja.cuenta,id,fk_unified_069,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) DEFERRABLE
+baney_caja.cash_registers,account_id,baney_caja.cuenta,id,cash_registers_account_id_fkey,FOREIGN KEY (account_id) REFERENCES baney_caja.cuenta(id)
+baney_caja.cash_sessions,closed_by,identity.users,id,cash_sessions_closed_by_fkey,FOREIGN KEY (closed_by) REFERENCES identity.users(id)
+baney_caja.cash_sessions,opened_by,identity.users,id,cash_sessions_opened_by_fkey,FOREIGN KEY (opened_by) REFERENCES identity.users(id)
+baney_caja.cash_sessions,register_id,baney_caja.cash_registers,id,cash_sessions_register_id_fkey,FOREIGN KEY (register_id) REFERENCES baney_caja.cash_registers(id)
+baney_caja.conciliacion,ejecutado_por_uid,identity.users,id,fk_unified_056,FOREIGN KEY (ejecutado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.conciliacion_linea,conciliacion_id,baney_caja.conciliacion,id,fk_conc_linea_conc,FOREIGN KEY (conciliacion_id) REFERENCES baney_caja.conciliacion(id) ON DELETE CASCADE
+baney_caja.conciliacion_linea,movimiento_id,baney_caja.movimiento,id,fk_conc_linea_mov,FOREIGN KEY (movimiento_id) REFERENCES baney_caja.movimiento(id) ON DELETE RESTRICT
+baney_caja.cuenta,titular_uid,identity.users,id,fk_unified_053,FOREIGN KEY (titular_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.cuenta_bancaria,cuenta_id,baney_caja.cuenta,id,fk_banco_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE CASCADE
+baney_caja.movimiento,corrige_mov_id,baney_caja.movimiento,id,fk_mov_corrige,FOREIGN KEY (corrige_mov_id) REFERENCES baney_caja.movimiento(id) ON DELETE RESTRICT
+baney_caja.movimiento,cuenta_id,baney_caja.cuenta,id,fk_mov_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE RESTRICT
+baney_caja.movimiento,factura_uid,baney_billing.factura,uid,fk_unified_054,FOREIGN KEY (factura_uid) REFERENCES baney_billing.factura(uid) DEFERRABLE
+baney_caja.movimiento,actor_uid,identity.users,id,fk_unified_055,FOREIGN KEY (actor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.movimiento,conciliacion_id,baney_caja.conciliacion,id,fk_unified_067,FOREIGN KEY (conciliacion_id) REFERENCES baney_caja.conciliacion(id) DEFERRABLE
+baney_caja.movimiento,cash_session_id,baney_caja.cash_sessions,id,movimiento_cash_session_id_fkey,FOREIGN KEY (cash_session_id) REFERENCES baney_caja.cash_sessions(id)
+baney_caja.movimiento,ref_comision,baney_billing.comision,uid,movimiento_ref_comision_fkey,FOREIGN KEY (ref_comision) REFERENCES baney_billing.comision(uid)
+baney_caja.movimiento,ref_conciliacion,baney_caja.conciliacion,uid,movimiento_ref_conciliacion_fkey,FOREIGN KEY (ref_conciliacion) REFERENCES baney_caja.conciliacion(uid)
+baney_caja.movimiento,ref_devolucion,baney_order.devolucion,uid,movimiento_ref_devolucion_fkey,FOREIGN KEY (ref_devolucion) REFERENCES baney_order.devolucion(uid)
+baney_caja.movimiento,ref_factura,baney_billing.factura,uid,movimiento_ref_factura_fkey,FOREIGN KEY (ref_factura) REFERENCES baney_billing.factura(uid)
+baney_caja.movimiento,ref_liquidacion,baney_billing.liquidacion,uid,movimiento_ref_liquidacion_fkey,FOREIGN KEY (ref_liquidacion) REFERENCES baney_billing.liquidacion(uid)
+baney_caja.movimiento,ref_payout,baney_caja.payout,uid,movimiento_ref_payout_fkey,FOREIGN KEY (ref_payout) REFERENCES baney_caja.payout(uid)
+baney_caja.movimiento,ref_pedido,baney_order.pedido,uid,movimiento_ref_pedido_fkey,FOREIGN KEY (ref_pedido) REFERENCES baney_order.pedido(uid)
+baney_caja.movimiento,ref_reembolso,payments.refunds,id,movimiento_ref_reembolso_fkey,FOREIGN KEY (ref_reembolso) REFERENCES payments.refunds(id)
+baney_caja.movimiento,ref_suborden,baney_order.suborden,uid,movimiento_ref_suborden_fkey,FOREIGN KEY (ref_suborden) REFERENCES baney_order.suborden(uid)
+baney_caja.movimiento,ref_viaje,transport.trips,id,movimiento_ref_viaje_fkey,FOREIGN KEY (ref_viaje) REFERENCES transport.trips(id)
+baney_caja.payout,cuenta_bancaria_id,baney_caja.cuenta_bancaria,id,fk_payout_banco,FOREIGN KEY (cuenta_bancaria_id) REFERENCES baney_caja.cuenta_bancaria(id) ON DELETE RESTRICT
+baney_caja.payout,"cuenta_bancaria_id,cuenta_id",baney_caja.cuenta_bancaria,"id,cuenta_id",fk_payout_bank_owner,"FOREIGN KEY (cuenta_bancaria_id, cuenta_id) REFERENCES baney_caja.cuenta_bancaria(id, cuenta_id)"
+baney_caja.payout,cuenta_id,baney_caja.cuenta,id,fk_payout_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE RESTRICT
+baney_caja.payout,liquidacion_uid,baney_billing.liquidacion,uid,fk_unified_057,FOREIGN KEY (liquidacion_uid) REFERENCES baney_billing.liquidacion(uid) DEFERRABLE
+baney_caja.payout,aprobado_por_uid,identity.users,id,fk_unified_058,FOREIGN KEY (aprobado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.payout_programacion,cuenta_id,baney_caja.cuenta,id,fk_prog_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE CASCADE
+baney_caja.reporte,cuenta_id,baney_caja.cuenta,id,fk_reporte_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE CASCADE
+baney_caja.reporte,solicitado_por_uid,identity.users,id,fk_unified_059,FOREIGN KEY (solicitado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_caja.saldo_cuenta,cuenta_id,baney_caja.cuenta,id,fk_saldo_cuenta,FOREIGN KEY (cuenta_id) REFERENCES baney_caja.cuenta(id) ON DELETE CASCADE
+baney_caja.saldo_cuenta,ultimo_movimiento_id,baney_caja.movimiento,id,fk_unified_068,FOREIGN KEY (ultimo_movimiento_id) REFERENCES baney_caja.movimiento(id) DEFERRABLE
+baney_cart.carrito,usuario_uid,identity.users,id,fk_unified_016,FOREIGN KEY (usuario_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_cart.carrito,direccion_uid,profiles.addresses,id,fk_unified_017,FOREIGN KEY (direccion_uid) REFERENCES profiles.addresses(id) DEFERRABLE
+baney_cart.carrito,pedido_uid,baney_order.pedido,uid,fk_unified_018,FOREIGN KEY (pedido_uid) REFERENCES baney_order.pedido(uid) DEFERRABLE
+baney_cart.carrito,fusionado_en_uid,baney_cart.carrito,uid,fk_unified_019,FOREIGN KEY (fusionado_en_uid) REFERENCES baney_cart.carrito(uid) DEFERRABLE
+baney_cart.carrito_entrega,carrito_id,baney_cart.carrito,id,fk_entrega_carrito,FOREIGN KEY (carrito_id) REFERENCES baney_cart.carrito(id) ON DELETE CASCADE
+baney_cart.carrito_entrega,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_023,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_cart.carrito_entrega,direccion_uid,profiles.addresses,id,fk_unified_024,FOREIGN KEY (direccion_uid) REFERENCES profiles.addresses(id) DEFERRABLE
+baney_cart.carrito_entrega,cotizacion_uid,baney_cart.cotizacion_transporte,uid,fk_unified_025,FOREIGN KEY (cotizacion_uid) REFERENCES baney_cart.cotizacion_transporte(uid) DEFERRABLE
+baney_cart.carrito_item,carrito_id,baney_cart.carrito,id,fk_item_carrito,FOREIGN KEY (carrito_id) REFERENCES baney_cart.carrito(id) ON DELETE CASCADE
+baney_cart.carrito_item,variante_uid,baney_catalog.variante,uid,fk_unified_020,FOREIGN KEY (variante_uid) REFERENCES baney_catalog.variante(uid) DEFERRABLE
+baney_cart.carrito_item,producto_uid,baney_catalog.producto,uid,fk_unified_021,FOREIGN KEY (producto_uid) REFERENCES baney_catalog.producto(uid) DEFERRABLE
+baney_cart.carrito_item,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_022,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_cart.cotizacion_transporte,carrito_id,baney_cart.carrito,id,fk_cotizacion_carrito,FOREIGN KEY (carrito_id) REFERENCES baney_cart.carrito(id) ON DELETE CASCADE
+baney_cart.cotizacion_transporte,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_026,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_cart.intento_checkout,carrito_id,baney_cart.carrito,id,fk_intento_carrito,FOREIGN KEY (carrito_id) REFERENCES baney_cart.carrito(id) ON DELETE CASCADE
+baney_cart.intento_checkout,pedido_uid,baney_order.pedido,uid,fk_unified_027,FOREIGN KEY (pedido_uid) REFERENCES baney_order.pedido(uid) DEFERRABLE
+baney_catalog.auctions,product_id,baney_catalog.producto,id,auctions_product_id_fkey,FOREIGN KEY (product_id) REFERENCES baney_catalog.producto(id)
+baney_catalog.auctions,"id,winner_bid_id",baney_catalog.bids,"auction_id,id",fk_auction_winner,"FOREIGN KEY (id, winner_bid_id) REFERENCES baney_catalog.bids(auction_id, id) DEFERRABLE"
+baney_catalog.bids,auction_id,baney_catalog.auctions,id,bids_auction_id_fkey,FOREIGN KEY (auction_id) REFERENCES baney_catalog.auctions(id)
+baney_catalog.bids,bidder_id,identity.users,id,bids_bidder_id_fkey,FOREIGN KEY (bidder_id) REFERENCES identity.users(id)
+baney_catalog.categoria,padre_id,baney_catalog.categoria,id,fk_categoria_padre,FOREIGN KEY (padre_id) REFERENCES baney_catalog.categoria(id) ON DELETE RESTRICT
+baney_catalog.cupon,vendedor_id,baney_catalog.vendedor,id,fk_cupon_vendedor,FOREIGN KEY (vendedor_id) REFERENCES baney_catalog.vendedor(id) ON DELETE CASCADE
+baney_catalog.cupon_uso,cupon_id,baney_catalog.cupon,id,fk_cupon_uso_cupon,FOREIGN KEY (cupon_id) REFERENCES baney_catalog.cupon(id) ON DELETE CASCADE
+baney_catalog.cupon_uso,usuario_uid,identity.users,id,fk_unified_003,FOREIGN KEY (usuario_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_catalog.cupon_uso,pedido_uid,baney_order.pedido,uid,fk_unified_004,FOREIGN KEY (pedido_uid) REFERENCES baney_order.pedido(uid) DEFERRABLE
+baney_catalog.descuento,vendedor_id,baney_catalog.vendedor,id,fk_descuento_vendedor,FOREIGN KEY (vendedor_id) REFERENCES baney_catalog.vendedor(id) ON DELETE CASCADE
+baney_catalog.descuento_objetivo,categoria_id,baney_catalog.categoria,id,fk_dobj_categoria,FOREIGN KEY (categoria_id) REFERENCES baney_catalog.categoria(id) ON DELETE CASCADE
+baney_catalog.descuento_objetivo,descuento_id,baney_catalog.descuento,id,fk_dobj_descuento,FOREIGN KEY (descuento_id) REFERENCES baney_catalog.descuento(id) ON DELETE CASCADE
+baney_catalog.descuento_objetivo,producto_id,baney_catalog.producto,id,fk_dobj_producto,FOREIGN KEY (producto_id) REFERENCES baney_catalog.producto(id) ON DELETE CASCADE
+baney_catalog.descuento_objetivo,variante_id,baney_catalog.variante,id,fk_dobj_variante,FOREIGN KEY (variante_id) REFERENCES baney_catalog.variante(id) ON DELETE CASCADE
+baney_catalog.moderacion_log,admin_uid,identity.users,id,fk_unified_007,FOREIGN KEY (admin_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_catalog.producto,area_id,baney_catalog.area,id,fk_producto_area,FOREIGN KEY (area_id) REFERENCES baney_catalog.area(id) ON DELETE SET NULL
+baney_catalog.producto,categoria_id,baney_catalog.categoria,id,fk_producto_categoria,FOREIGN KEY (categoria_id) REFERENCES baney_catalog.categoria(id) ON DELETE RESTRICT
+baney_catalog.producto,vendedor_id,baney_catalog.vendedor,id,fk_producto_vendedor,FOREIGN KEY (vendedor_id) REFERENCES baney_catalog.vendedor(id) ON DELETE RESTRICT
+baney_catalog.producto_foto,producto_id,baney_catalog.producto,id,fk_foto_producto,FOREIGN KEY (producto_id) REFERENCES baney_catalog.producto(id) ON DELETE CASCADE
+baney_catalog.resena,producto_id,baney_catalog.producto,id,fk_resena_producto,FOREIGN KEY (producto_id) REFERENCES baney_catalog.producto(id) ON DELETE CASCADE
+baney_catalog.resena,vendedor_id,baney_catalog.vendedor,id,fk_resena_vendedor,FOREIGN KEY (vendedor_id) REFERENCES baney_catalog.vendedor(id) ON DELETE CASCADE
+baney_catalog.resena,autor_uid,identity.users,id,fk_unified_005,FOREIGN KEY (autor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_catalog.resena,pedido_uid,baney_order.pedido,uid,fk_unified_006,FOREIGN KEY (pedido_uid) REFERENCES baney_order.pedido(uid) DEFERRABLE
+baney_catalog.urgent_requests,category_id,baney_catalog.categoria,id,urgent_requests_category_id_fkey,FOREIGN KEY (category_id) REFERENCES baney_catalog.categoria(id)
+baney_catalog.urgent_requests,requester_id,identity.users,id,urgent_requests_requester_id_fkey,FOREIGN KEY (requester_id) REFERENCES identity.users(id)
+baney_catalog.variante,producto_id,baney_catalog.producto,id,fk_variante_producto,FOREIGN KEY (producto_id) REFERENCES baney_catalog.producto(id) ON DELETE CASCADE
+baney_catalog.variante_precio_historial,variante_id,baney_catalog.variante,id,fk_precio_hist_variante,FOREIGN KEY (variante_id) REFERENCES baney_catalog.variante(id) ON DELETE CASCADE
+baney_catalog.variante_precio_historial,actor_uid,identity.users,id,fk_unified_002,FOREIGN KEY (actor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_catalog.vendedor,aprobado_por_uid,identity.users,id,fk_unified_001,FOREIGN KEY (aprobado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_catalog.vendedor,uid,identity.users,id,fk_unified_061,FOREIGN KEY (uid) REFERENCES identity.users(id) DEFERRABLE
+baney_inventory.alerta_stock,existencia_id,baney_inventory.existencia,id,fk_alerta_existencia,FOREIGN KEY (existencia_id) REFERENCES baney_inventory.existencia(id) ON DELETE CASCADE
+baney_inventory.alerta_stock,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_015,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_inventory.existencia,variante_uid,baney_catalog.variante,uid,fk_unified_008,FOREIGN KEY (variante_uid) REFERENCES baney_catalog.variante(uid) DEFERRABLE
+baney_inventory.existencia,producto_uid,baney_catalog.producto,uid,fk_unified_009,FOREIGN KEY (producto_uid) REFERENCES baney_catalog.producto(uid) DEFERRABLE
+baney_inventory.existencia,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_010,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_inventory.movimiento_stock,existencia_id,baney_inventory.existencia,id,fk_mov_existencia,FOREIGN KEY (existencia_id) REFERENCES baney_inventory.existencia(id) ON DELETE RESTRICT
+baney_inventory.movimiento_stock,variante_uid,baney_catalog.variante,uid,fk_unified_012,FOREIGN KEY (variante_uid) REFERENCES baney_catalog.variante(uid) DEFERRABLE
+baney_inventory.movimiento_stock,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_013,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_inventory.movimiento_stock,actor_uid,identity.users,id,fk_unified_014,FOREIGN KEY (actor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_inventory.movimiento_stock,ref_devolucion,baney_order.devolucion,uid,movimiento_stock_ref_devolucion_fkey,FOREIGN KEY (ref_devolucion) REFERENCES baney_order.devolucion(uid)
+baney_inventory.movimiento_stock,ref_pedido,baney_order.pedido,uid,movimiento_stock_ref_pedido_fkey,FOREIGN KEY (ref_pedido) REFERENCES baney_order.pedido(uid)
+baney_inventory.movimiento_stock,ref_reserva,baney_inventory.reserva,uid,movimiento_stock_ref_reserva_fkey,FOREIGN KEY (ref_reserva) REFERENCES baney_inventory.reserva(uid)
+baney_inventory.movimiento_stock,ref_suborden,baney_order.suborden,uid,movimiento_stock_ref_suborden_fkey,FOREIGN KEY (ref_suborden) REFERENCES baney_order.suborden(uid)
+baney_inventory.reserva,existencia_id,baney_inventory.existencia,id,fk_reserva_existencia,FOREIGN KEY (existencia_id) REFERENCES baney_inventory.existencia(id) ON DELETE RESTRICT
+baney_inventory.reserva,variante_uid,baney_catalog.variante,uid,fk_unified_011,FOREIGN KEY (variante_uid) REFERENCES baney_catalog.variante(uid) DEFERRABLE
+baney_inventory.reserva,ref_carrito,baney_cart.carrito,uid,reserva_ref_carrito_fkey,FOREIGN KEY (ref_carrito) REFERENCES baney_cart.carrito(uid)
+baney_inventory.reserva,ref_pedido,baney_order.pedido,uid,reserva_ref_pedido_fkey,FOREIGN KEY (ref_pedido) REFERENCES baney_order.pedido(uid)
+baney_order.cancelacion,pedido_id,baney_order.pedido,id,fk_cancelacion_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE CASCADE
+baney_order.cancelacion,suborden_id,baney_order.suborden,id,fk_cancelacion_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE CASCADE
+baney_order.cancelacion,solicitante_uid,identity.users,id,fk_unified_042,FOREIGN KEY (solicitante_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.devolucion,suborden_id,baney_order.suborden,id,fk_devolucion_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE RESTRICT
+baney_order.devolucion,solicitante_uid,identity.users,id,fk_unified_036,FOREIGN KEY (solicitante_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.devolucion,resuelta_por_uid,identity.users,id,fk_unified_037,FOREIGN KEY (resuelta_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.devolucion_evidencia,devolucion_id,baney_order.devolucion,id,fk_evidencia_devolucion,FOREIGN KEY (devolucion_id) REFERENCES baney_order.devolucion(id) ON DELETE CASCADE
+baney_order.devolucion_evidencia,subida_por_uid,identity.users,id,fk_unified_038,FOREIGN KEY (subida_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.devolucion_item,devolucion_id,baney_order.devolucion,id,fk_dev_item_devolucion,FOREIGN KEY (devolucion_id) REFERENCES baney_order.devolucion(id) ON DELETE CASCADE
+baney_order.devolucion_item,suborden_item_id,baney_order.suborden_item,id,fk_dev_item_item,FOREIGN KEY (suborden_item_id) REFERENCES baney_order.suborden_item(id) ON DELETE RESTRICT
+baney_order.disputa_referencia,pedido_id,baney_order.pedido,id,fk_disputa_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE RESTRICT
+baney_order.disputa_referencia,suborden_id,baney_order.suborden,id,fk_disputa_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE RESTRICT
+baney_order.disputa_referencia,disputa_uid,support.disputes,id,fk_unified_043,FOREIGN KEY (disputa_uid) REFERENCES support.disputes(id) DEFERRABLE
+baney_order.disputa_referencia,abierta_por_uid,identity.users,id,fk_unified_044,FOREIGN KEY (abierta_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.disputa_referencia,resuelta_por_uid,identity.users,id,fk_unified_045,FOREIGN KEY (resuelta_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.pago_referencia,pedido_id,baney_order.pedido,id,fk_pago_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE RESTRICT
+baney_order.pago_referencia,payment_uid,payments.payment_intents,id,fk_unified_035,FOREIGN KEY (payment_uid) REFERENCES payments.payment_intents(id) DEFERRABLE
+baney_order.pedido,comprador_uid,identity.users,id,fk_unified_028,FOREIGN KEY (comprador_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.pedido,carrito_uid,baney_cart.carrito,uid,fk_unified_029,FOREIGN KEY (carrito_uid) REFERENCES baney_cart.carrito(uid) DEFERRABLE
+baney_order.pedido_evento,pedido_id,baney_order.pedido,id,fk_evento_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE CASCADE
+baney_order.pedido_evento,suborden_id,baney_order.suborden,id,fk_evento_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE CASCADE
+baney_order.pedido_evento,actor_uid,identity.users,id,fk_unified_034,FOREIGN KEY (actor_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.solicitud_reembolso,devolucion_id,baney_order.devolucion,id,fk_reembolso_devolucion,FOREIGN KEY (devolucion_id) REFERENCES baney_order.devolucion(id) ON DELETE SET NULL
+baney_order.solicitud_reembolso,pedido_id,baney_order.pedido,id,fk_reembolso_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE RESTRICT
+baney_order.solicitud_reembolso,suborden_id,baney_order.suborden,id,fk_reembolso_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE RESTRICT
+baney_order.solicitud_reembolso,autorizado_por_uid,identity.users,id,fk_unified_039,FOREIGN KEY (autorizado_por_uid) REFERENCES identity.users(id) DEFERRABLE
+baney_order.solicitud_reembolso,payment_refund_uid,payments.refunds,id,fk_unified_040,FOREIGN KEY (payment_refund_uid) REFERENCES payments.refunds(id) DEFERRABLE
+baney_order.solicitud_reembolso,nota_credito_uid,baney_billing.factura,uid,fk_unified_041,FOREIGN KEY (nota_credito_uid) REFERENCES baney_billing.factura(uid) DEFERRABLE
+baney_order.suborden,pedido_id,baney_order.pedido,id,fk_suborden_pedido,FOREIGN KEY (pedido_id) REFERENCES baney_order.pedido(id) ON DELETE RESTRICT
+baney_order.suborden,vendedor_uid,baney_catalog.vendedor,uid,fk_unified_030,FOREIGN KEY (vendedor_uid) REFERENCES baney_catalog.vendedor(uid) DEFERRABLE
+baney_order.suborden,trip_uid,transport.trips,id,fk_unified_031,FOREIGN KEY (trip_uid) REFERENCES transport.trips(id) DEFERRABLE
+baney_order.suborden_item,suborden_id,baney_order.suborden,id,fk_item_suborden,FOREIGN KEY (suborden_id) REFERENCES baney_order.suborden(id) ON DELETE CASCADE
+baney_order.suborden_item,variante_uid,baney_catalog.variante,uid,fk_unified_032,FOREIGN KEY (variante_uid) REFERENCES baney_catalog.variante(uid) DEFERRABLE
+baney_order.suborden_item,producto_uid,baney_catalog.producto,uid,fk_unified_033,FOREIGN KEY (producto_uid) REFERENCES baney_catalog.producto(uid) DEFERRABLE
+communications.attachments,message_id,communications.messages,id,attachments_message_id_fkey,FOREIGN KEY (message_id) REFERENCES communications.messages(id)
+communications.conversations,order_id,baney_order.pedido,id,conversations_order_id_fkey,FOREIGN KEY (order_id) REFERENCES baney_order.pedido(id)
+communications.conversations,request_id,transport.transport_requests,id,conversations_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+communications.delivery_attempts,notification_id,communications.notifications,id,delivery_attempts_notification_id_fkey,FOREIGN KEY (notification_id) REFERENCES communications.notifications(id)
+communications.messages,"conversation_id,sender_id",communications.participants,"conversation_id,user_id",messages_conversation_id_sender_id_fkey,"FOREIGN KEY (conversation_id, sender_id) REFERENCES communications.participants(conversation_id, user_id)"
+communications.notification_preferences,user_id,identity.users,id,notification_preferences_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+communications.notifications,template_id,communications.notification_templates,id,notifications_template_id_fkey,FOREIGN KEY (template_id) REFERENCES communications.notification_templates(id)
+communications.notifications,user_id,identity.users,id,notifications_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+communications.participants,conversation_id,communications.conversations,id,participants_conversation_id_fkey,FOREIGN KEY (conversation_id) REFERENCES communications.conversations(id)
+communications.participants,user_id,identity.users,id,participants_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+education.assessment_attempts,"assessment_id,course_id",education.assessments,"id,course_id",assessment_attempts_assessment_id_course_id_fkey,"FOREIGN KEY (assessment_id, course_id) REFERENCES education.assessments(id, course_id)"
+education.assessment_attempts,"enrollment_id,course_id",education.enrollments,"id,course_id",assessment_attempts_enrollment_id_course_id_fkey,"FOREIGN KEY (enrollment_id, course_id) REFERENCES education.enrollments(id, course_id)"
+education.assessments,course_id,education.courses,id,assessments_course_id_fkey,FOREIGN KEY (course_id) REFERENCES education.courses(id)
+education.certifications,enrollment_id,education.enrollments,id,certifications_enrollment_id_fkey,FOREIGN KEY (enrollment_id) REFERENCES education.enrollments(id)
+education.courses,instructor_id,identity.users,id,courses_instructor_id_fkey,FOREIGN KEY (instructor_id) REFERENCES identity.users(id)
+education.enrollments,course_id,education.courses,id,enrollments_course_id_fkey,FOREIGN KEY (course_id) REFERENCES education.courses(id)
+education.enrollments,user_id,identity.users,id,enrollments_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+education.lessons,course_id,education.courses,id,lessons_course_id_fkey,FOREIGN KEY (course_id) REFERENCES education.courses(id)
+governance.access_logs,user_id,identity.users,id,access_logs_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+governance.audit_entries,actor_id,identity.users,id,audit_entries_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+governance.consents,user_id,identity.users,id,consents_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+governance.data_access_grants,grantee_id,identity.users,id,data_access_grants_grantee_id_fkey,FOREIGN KEY (grantee_id) REFERENCES identity.users(id)
+governance.data_access_grants,subject_id,identity.users,id,data_access_grants_subject_id_fkey,FOREIGN KEY (subject_id) REFERENCES identity.users(id)
+governance.data_changes,audit_entry_id,governance.audit_entries,id,data_changes_audit_entry_id_fkey,FOREIGN KEY (audit_entry_id) REFERENCES governance.audit_entries(id)
+governance.data_subject_requests,user_id,identity.users,id,data_subject_requests_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+governance.fraud_cases,assessment_id,governance.risk_assessments,id,fraud_cases_assessment_id_fkey,FOREIGN KEY (assessment_id) REFERENCES governance.risk_assessments(id)
+governance.fraud_cases,assigned_to,identity.users,id,fraud_cases_assigned_to_fkey,FOREIGN KEY (assigned_to) REFERENCES identity.users(id)
+governance.risk_assessments,payment_intent_id,payments.payment_intents,id,risk_assessments_payment_intent_id_fkey,FOREIGN KEY (payment_intent_id) REFERENCES payments.payment_intents(id)
+governance.risk_assessments,rule_id,governance.risk_rules,id,risk_assessments_rule_id_fkey,FOREIGN KEY (rule_id) REFERENCES governance.risk_rules(id)
+governance.risk_assessments,user_id,identity.users,id,risk_assessments_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+governance.risk_decisions,actor_id,identity.users,id,risk_decisions_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+governance.risk_decisions,assessment_id,governance.risk_assessments,id,risk_decisions_assessment_id_fkey,FOREIGN KEY (assessment_id) REFERENCES governance.risk_assessments(id)
+governance.risk_decisions,fraud_case_id,governance.fraud_cases,id,risk_decisions_fraud_case_id_fkey,FOREIGN KEY (fraud_case_id) REFERENCES governance.fraud_cases(id)
+governance.taxpayers,user_id,identity.users,id,taxpayers_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.credentials,user_id,identity.users,id,credentials_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.email_verifications,user_id,identity.users,id,email_verifications_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.oauth_identities,user_id,identity.users,id,oauth_identities_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.password_resets,user_id,identity.users,id,password_resets_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.recovery_codes,user_id,identity.two_factor_configurations,user_id,recovery_codes_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.two_factor_configurations(user_id)
+identity.refresh_tokens,parent_token_id,identity.refresh_tokens,id,refresh_tokens_parent_token_id_fkey,FOREIGN KEY (parent_token_id) REFERENCES identity.refresh_tokens(id)
+identity.refresh_tokens,session_id,identity.sessions,id,refresh_tokens_session_id_fkey,FOREIGN KEY (session_id) REFERENCES identity.sessions(id)
+identity.role_assignments,granted_by,identity.users,id,role_assignments_granted_by_fkey,FOREIGN KEY (granted_by) REFERENCES identity.users(id)
+identity.role_assignments,role_code,identity.roles,code,role_assignments_role_code_fkey,FOREIGN KEY (role_code) REFERENCES identity.roles(code)
+identity.role_assignments,user_id,identity.users,id,role_assignments_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.role_permissions,permission_code,identity.permissions,code,role_permissions_permission_code_fkey,FOREIGN KEY (permission_code) REFERENCES identity.permissions(code)
+identity.role_permissions,role_code,identity.roles,code,role_permissions_role_code_fkey,FOREIGN KEY (role_code) REFERENCES identity.roles(code)
+identity.sessions,user_id,identity.users,id,sessions_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+identity.two_factor_configurations,user_id,identity.users,id,two_factor_configurations_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+payments.payment_intents,order_id,baney_order.pedido,id,payment_intents_order_id_fkey,FOREIGN KEY (order_id) REFERENCES baney_order.pedido(id)
+payments.payment_intents,payment_method_id,payments.payment_methods,id,payment_intents_payment_method_id_fkey,FOREIGN KEY (payment_method_id) REFERENCES payments.payment_methods(id)
+payments.payment_intents,request_id,transport.transport_requests,id,payment_intents_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+payments.payment_intents,user_id,identity.users,id,payment_intents_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+payments.payment_methods,user_id,identity.users,id,payment_methods_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+payments.payment_transactions,intent_id,payments.payment_intents,id,payment_transactions_intent_id_fkey,FOREIGN KEY (intent_id) REFERENCES payments.payment_intents(id)
+payments.refunds,intent_id,payments.payment_intents,id,refunds_intent_id_fkey,FOREIGN KEY (intent_id) REFERENCES payments.payment_intents(id)
+payments.refunds,transaction_id,payments.payment_transactions,id,refunds_transaction_id_fkey,FOREIGN KEY (transaction_id) REFERENCES payments.payment_transactions(id)
+platform.admin_actions,actor_id,identity.users,id,admin_actions_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+platform.admin_actions,audit_entry_id,governance.audit_entries,id,admin_actions_audit_entry_id_fkey,FOREIGN KEY (audit_entry_id) REFERENCES governance.audit_entries(id)
+platform.configuration_versions,changed_by,identity.users,id,configuration_versions_changed_by_fkey,FOREIGN KEY (changed_by) REFERENCES identity.users(id)
+platform.configuration_versions,configuration_key,platform.configurations,key,configuration_versions_configuration_key_fkey,FOREIGN KEY (configuration_key) REFERENCES configurations(key)
+platform.feature_flags,updated_by,identity.users,id,feature_flags_updated_by_fkey,FOREIGN KEY (updated_by) REFERENCES identity.users(id)
+profiles.account_activities,user_id,identity.users,id,account_activities_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.account_status_changes,actor_id,identity.users,id,account_status_changes_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+profiles.account_status_changes,user_id,identity.users,id,account_status_changes_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.addresses,user_id,identity.users,id,addresses_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.contacts,user_id,identity.users,id,contacts_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.onboarding,user_id,identity.users,id,onboarding_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.preferences,user_id,identity.users,id,preferences_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+profiles.user_profiles,user_id,identity.users,id,user_profiles_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+support.claims,claimant_id,identity.users,id,claims_claimant_id_fkey,FOREIGN KEY (claimant_id) REFERENCES identity.users(id)
+support.claims,dispute_id,support.disputes,id,claims_dispute_id_fkey,FOREIGN KEY (dispute_id) REFERENCES support.disputes(id)
+support.disputes,opened_by,identity.users,id,disputes_opened_by_fkey,FOREIGN KEY (opened_by) REFERENCES identity.users(id)
+support.disputes,order_id,baney_order.pedido,id,disputes_order_id_fkey,FOREIGN KEY (order_id) REFERENCES baney_order.pedido(id)
+support.disputes,request_id,transport.transport_requests,id,disputes_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+support.evidence,dispute_id,support.disputes,id,evidence_dispute_id_fkey,FOREIGN KEY (dispute_id) REFERENCES support.disputes(id)
+support.evidence,uploaded_by,identity.users,id,evidence_uploaded_by_fkey,FOREIGN KEY (uploaded_by) REFERENCES identity.users(id)
+support.interactions,author_id,identity.users,id,interactions_author_id_fkey,FOREIGN KEY (author_id) REFERENCES identity.users(id)
+support.interactions,ticket_id,support.tickets,id,interactions_ticket_id_fkey,FOREIGN KEY (ticket_id) REFERENCES support.tickets(id)
+support.resolutions,dispute_id,support.disputes,id,resolutions_dispute_id_fkey,FOREIGN KEY (dispute_id) REFERENCES support.disputes(id)
+support.resolutions,refund_id,payments.refunds,id,resolutions_refund_id_fkey,FOREIGN KEY (refund_id) REFERENCES payments.refunds(id)
+support.resolutions,resolved_by,identity.users,id,resolutions_resolved_by_fkey,FOREIGN KEY (resolved_by) REFERENCES identity.users(id)
+support.ticket_assignments,agent_id,identity.users,id,ticket_assignments_agent_id_fkey,FOREIGN KEY (agent_id) REFERENCES identity.users(id)
+support.ticket_assignments,ticket_id,support.tickets,id,ticket_assignments_ticket_id_fkey,FOREIGN KEY (ticket_id) REFERENCES support.tickets(id)
+support.tickets,dispute_id,support.disputes,id,tickets_dispute_id_fkey,FOREIGN KEY (dispute_id) REFERENCES support.disputes(id)
+support.tickets,requester_id,identity.users,id,tickets_requester_id_fkey,FOREIGN KEY (requester_id) REFERENCES identity.users(id)
+support.tickets,sla_id,support.slas,id,tickets_sla_id_fkey,FOREIGN KEY (sla_id) REFERENCES support.slas(id)
+transport.assignments,accepted_offer_id,transport.transport_offers,id,assignments_accepted_offer_id_fkey,FOREIGN KEY (accepted_offer_id) REFERENCES transport.transport_offers(id)
+transport.assignments,driver_profile_id,transport.driver_profiles,id,assignments_driver_profile_id_fkey,FOREIGN KEY (driver_profile_id) REFERENCES transport.driver_profiles(id)
+transport.assignments,request_id,transport.transport_requests,id,assignments_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.assignments,vehicle_id,transport.vehicles,id,assignments_vehicle_id_fkey,FOREIGN KEY (vehicle_id) REFERENCES transport.vehicles(id)
+transport.dispatch_boards,manager_id,identity.users,id,dispatch_boards_manager_id_fkey,FOREIGN KEY (manager_id) REFERENCES identity.users(id)
+transport.dispatch_decisions,actor_id,identity.users,id,dispatch_decisions_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+transport.dispatch_decisions,assignment_id,transport.assignments,id,dispatch_decisions_assignment_id_fkey,FOREIGN KEY (assignment_id) REFERENCES transport.assignments(id)
+transport.dispatch_decisions,job_id,transport.dispatch_jobs,id,dispatch_decisions_job_id_fkey,FOREIGN KEY (job_id) REFERENCES transport.dispatch_jobs(id)
+transport.dispatch_jobs,board_id,transport.dispatch_boards,id,dispatch_jobs_board_id_fkey,FOREIGN KEY (board_id) REFERENCES transport.dispatch_boards(id)
+transport.dispatch_jobs,request_id,transport.transport_requests,id,dispatch_jobs_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.driver_availability,driver_profile_id,transport.driver_profiles,id,driver_availability_driver_profile_id_fkey,FOREIGN KEY (driver_profile_id) REFERENCES transport.driver_profiles(id)
+transport.driver_availability,vehicle_id,transport.vehicles,id,driver_availability_vehicle_id_fkey,FOREIGN KEY (vehicle_id) REFERENCES transport.vehicles(id)
+transport.driver_profiles,user_id,identity.users,id,fk_unified_063,FOREIGN KEY (user_id) REFERENCES identity.users(id) DEFERRABLE
+transport.eta_estimates,trip_id,transport.trips,id,eta_estimates_trip_id_fkey,FOREIGN KEY (trip_id) REFERENCES transport.trips(id)
+transport.geofences,center_id,transport.map_locations,id,geofences_center_id_fkey,FOREIGN KEY (center_id) REFERENCES transport.map_locations(id)
+transport.map_locations,user_id,identity.users,id,map_locations_user_id_fkey,FOREIGN KEY (user_id) REFERENCES identity.users(id)
+transport.matching_candidates,driver_profile_id,transport.driver_profiles,id,matching_candidates_driver_profile_id_fkey,FOREIGN KEY (driver_profile_id) REFERENCES transport.driver_profiles(id)
+transport.matching_candidates,request_id,transport.transport_requests,id,matching_candidates_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.matching_candidates,vehicle_id,transport.vehicles,id,matching_candidates_vehicle_id_fkey,FOREIGN KEY (vehicle_id) REFERENCES transport.vehicles(id)
+transport.request_status_history,actor_id,identity.users,id,request_status_history_actor_id_fkey,FOREIGN KEY (actor_id) REFERENCES identity.users(id)
+transport.request_status_history,request_id,transport.transport_requests,id,request_status_history_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.tracking_points,trip_id,transport.trips,id,tracking_points_trip_id_fkey,FOREIGN KEY (trip_id) REFERENCES transport.trips(id)
+transport.transport_cargos,request_id,transport.transport_requests,id,transport_cargos_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.transport_exceptions,trip_id,transport.trips,id,transport_exceptions_trip_id_fkey,FOREIGN KEY (trip_id) REFERENCES transport.trips(id)
+transport.transport_offers,"parent_offer_id,request_id,carrier_id",transport.transport_offers,"id,request_id,carrier_id",fk_counteroffer_context,"FOREIGN KEY (parent_offer_id, request_id, carrier_id) REFERENCES transport.transport_offers(id, request_id, carrier_id)"
+transport.transport_offers,carrier_id,identity.users,id,fk_unified_065,FOREIGN KEY (carrier_id) REFERENCES identity.users(id) DEFERRABLE
+transport.transport_offers,parent_offer_id,transport.transport_offers,id,transport_offers_parent_offer_id_fkey,FOREIGN KEY (parent_offer_id) REFERENCES transport.transport_offers(id)
+transport.transport_offers,request_id,transport.transport_requests,id,transport_offers_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.transport_offers,vehicle_id,transport.vehicles,id,transport_offers_vehicle_id_fkey,FOREIGN KEY (vehicle_id) REFERENCES transport.vehicles(id)
+transport.transport_requests,"active_assignment_id,id",transport.assignments,"id,request_id",fk_active_assignment,"FOREIGN KEY (active_assignment_id, id) REFERENCES transport.assignments(id, request_id) DEFERRABLE INITIALLY DEFERRED"
+transport.transport_requests,requester_id,identity.users,id,fk_unified_062,FOREIGN KEY (requester_id) REFERENCES identity.users(id) DEFERRABLE
+transport.transport_requests,pricing_rule_id,transport.pricing_rules,id,transport_requests_pricing_rule_id_fkey,FOREIGN KEY (pricing_rule_id) REFERENCES transport.pricing_rules(id)
+transport.trips,"assignment_id,request_id",transport.assignments,"id,request_id",fk_trip_assignment_request,"FOREIGN KEY (assignment_id, request_id) REFERENCES transport.assignments(id, request_id)"
+transport.trips,assignment_id,transport.assignments,id,trips_assignment_id_fkey,FOREIGN KEY (assignment_id) REFERENCES transport.assignments(id)
+transport.trips,request_id,transport.transport_requests,id,trips_request_id_fkey,FOREIGN KEY (request_id) REFERENCES transport.transport_requests(id)
+transport.trips,route_id,transport.routes,id,trips_route_id_fkey,FOREIGN KEY (route_id) REFERENCES transport.routes(id)
+transport.vehicle_documents,vehicle_id,transport.vehicles,id,vehicle_documents_vehicle_id_fkey,FOREIGN KEY (vehicle_id) REFERENCES transport.vehicles(id)
+transport.vehicle_documents,verified_by,identity.users,id,vehicle_documents_verified_by_fkey,FOREIGN KEY (verified_by) REFERENCES identity.users(id)
+transport.vehicles,owner_id,identity.users,id,fk_unified_064,FOREIGN KEY (owner_id) REFERENCES identity.users(id) DEFERRABLE

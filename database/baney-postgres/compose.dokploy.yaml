@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:18-bookworm
+    configs:
+      - source: schema
+        target: /docker-entrypoint-initdb.d/010-schema.sql
+      - source: app_role
+        target: /docker-entrypoint-initdb.d/020-app-role.sh
+        mode: 0555
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-baney}
+      POSTGRES_USER: ${POSTGRES_USER:-baney_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}
+      BANEY_APP_PASSWORD: ${BANEY_APP_PASSWORD:?Define BANEY_APP_PASSWORD}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - baney_data:/var/lib/postgresql
+    networks:
+      - baney
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" && psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -tAc "SELECT count(*) FROM platform.schema_versions WHERE version=''001'' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname=''baney_app'')" | grep -qx 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    stop_grace_period: 60s
+    shm_size: 256mb
+
+volumes:
+  baney_data:
+
+networks:
+  baney:
+    name: ${BANEY_NETWORK_NAME:-baney-private}
+
+configs:
+  schema:
+    file: ./schema.sql
+  app_role:
+    file: ./init/020-app-role.sh

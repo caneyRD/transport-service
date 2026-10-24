@@ -1,0 +1,5 @@
+*
+!schema.sql
+!init/
+!init/020-app-role.sh
+!Dockerfile
