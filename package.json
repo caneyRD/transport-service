@@ -9,7 +9,9 @@
     "start:dev": "npm run build && node --watch dist/main.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "db:check": "node --env-file-if-exists=.env scripts/db-check.cjs",
+    "db:migrate": "node --env-file-if-exists=.env scripts/db-migrate.cjs"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -17,6 +19,7 @@
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -24,6 +27,7 @@
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "eslint": "^10.13.0",
     "jest": "^30.0.0",
     "ts-jest": "^29.2.5",

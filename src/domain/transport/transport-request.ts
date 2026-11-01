@@ -55,6 +55,15 @@ export class TransportRequest extends AggregateRoot {
   }
 
   get currentStatus(): TransportRequestStatus { return this.status; }
+
+  static restore(props: TransportRequestProps, status: TransportRequestStatus, version: number, assignmentId?: string): TransportRequest {
+    const request = new TransportRequest(props);
+    if (!Object.values(TransportRequestStatus).includes(status)) throw new DomainError('Invalid request status');
+    request.status = status;
+    request.activeAssignmentId = assignmentId;
+    request.restoreVersion(version);
+    return request;
+  }
   get currentAssignmentId(): string | undefined { return this.activeAssignmentId; }
 
   selectCargoType(type: CargoType): void {
@@ -97,6 +106,7 @@ export class TransportRequest extends AggregateRoot {
   cancel(): void {
     this.transitionTo(TransportRequestStatus.CANCELLED);
     this.addEvent('TransportRequestCancelled', { assignmentId: this.activeAssignmentId });
+    this.activeAssignmentId = undefined;
   }
   releaseAssignment(): void {
     if (!this.activeAssignmentId) throw new DomainError('Transport request has no active assignment');

@@ -23,6 +23,15 @@ export abstract class AggregateRoot {
     return this.events.splice(0);
   }
 
+  peekDomainEvents(): readonly DomainEvent[] {
+    return [...this.events];
+  }
+
+  protected restoreVersion(version: number): void {
+    if (!Number.isInteger(version) || version < 0) throw new Error('Invalid aggregate version');
+    this.version = version;
+  }
+
   get currentVersion(): number {
     return this.version;
   }

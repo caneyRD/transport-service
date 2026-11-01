@@ -54,6 +54,19 @@ export class TransportOffer extends AggregateRoot {
   }
 
   get currentStatus(): TransportOfferStatus { return this.status; }
+
+  static restore(props: {
+    id: string; requestId: string; carrierId: string; price: Money; validUntil: Date;
+    vehicleId?: string; parentOfferId?: string; proposedBy?: OfferActor; round: number;
+    status: TransportOfferStatus; version: number;
+  }): TransportOffer {
+    if (!Object.values(TransportOfferStatus).includes(props.status)) throw new DomainError('Invalid offer status');
+    const offer = new TransportOffer(props.id, props.requestId, props.carrierId, props.price,
+      new Date(props.validUntil), props.vehicleId, props.parentOfferId, props.proposedBy, props.round);
+    offer.status = props.status;
+    offer.restoreVersion(props.version);
+    return offer;
+  }
   submit(): void {
     if (this.status !== TransportOfferStatus.DRAFT) throw new DomainError('Only a draft offer can be submitted');
     this.status = TransportOfferStatus.SUBMITTED;

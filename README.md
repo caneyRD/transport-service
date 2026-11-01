@@ -40,11 +40,11 @@ El modelo también implementa:
 - `UC-TRA-06`: Contraofertar precio.
 - `UC-TRA-07`: Cancelar solicitud.
 
-Los casos de uso crean y modifican solicitudes y ofertas mediante puertos de repositorio. Actualmente se incluyen adapters en memoria para pruebas y desarrollo. No hay base de datos ni Prisma.
+Los casos de uso crean y modifican solicitudes y ofertas mediante puertos de repositorio. El servicio incluye un adapter PostgreSQL transaccional y adapters en memoria para pruebas. Las escrituras publican eventos en `transport.outbox_events` dentro de la misma transacción.
 
 El esquema lógico propuesto para la futura base de datos está documentado en [`docs/transport-data-schema.md`](./docs/transport-data-schema.md). Incluye la revisión de consistencia del 13 de octubre y todavía requiere aprobación del equipo de Arquitectura/DB/DevOps antes de crear migraciones.
 
-La definición SQL base para PostgreSQL está en [`database/schema.sql`](./database/schema.sql). Es una base inicial para revisión; debe convertirse en migraciones versionadas después de aprobar las decisiones pendientes.
+La definición SQL base para PostgreSQL está en [`database/schema.sql`](./database/schema.sql). La migración incremental [`database/migrations/001_transport_persistence.sql`](./database/migrations/001_transport_persistence.sql) agrega control de versiones y soporte de contraofertas sobre el esquema unificado.
 
 ## Estados de `TransportRequest`
 
@@ -54,7 +54,7 @@ Una solicitud también puede cancelarse en los estados permitidos. Las transicio
 
 ## Arquitectura
 
-La lógica de negocio vive en `src/domain` y no depende de NestJS, Prisma ni de una base de datos. Las capas de aplicación, infraestructura y HTTP se añadirán sobre este núcleo.
+La lógica de negocio vive en `src/domain`; la infraestructura PostgreSQL está en `src/infrastructure/postgres` y la API HTTP en `src/http`.
 
 Las referencias a usuarios, transportistas y vehículos se manejan mediante identificadores estables. Este servicio no accede directamente a las tablas internas de `authServiceCaney`.
 
@@ -62,6 +62,10 @@ Las referencias a usuarios, transportistas y vehículos se manejan mediante iden
 
 ```bash
 npm install
+npm run db:migrate   # requiere DATABASE_URL y VPN; aplica migraciones pendientes
+npm run db:check     # comprobación de conexión y tablas de Transporte
 npm test
 npm run build
 ```
+
+La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. La fecha de avance del cronograma es el 1 de noviembre de 2026: UC-TRA-01 a UC-TRA-07 están implementados y persistidos; UC-TRA-08, UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 comienzan el 2 de noviembre según el Excel.
