@@ -40,6 +40,8 @@ integration('PostgreSQL transport integration', () => {
       release: () => undefined,
     };
     store = new PostgresTransportStore({ connect: async () => adapter } as unknown as Pool);
+    await client.query(`INSERT INTO identity.users(id,email,status) VALUES
+      ($1,$2,'ACTIVE'),($3,$4,'ACTIVE')`, [carrierId, `${carrierId}@integration.test`, requesterId, `${requesterId}@integration.test`]);
     await client.query(`INSERT INTO transport.driver_profiles(id,user_id,status) VALUES ($1,$2,'ENABLED')`,[driverId,carrierId]);
     await client.query(`INSERT INTO transport.vehicles
       (id,owner_id,registration_number,registration_number_normalized,body_type,capacity_value,capacity_unit,capacity_kg,status)

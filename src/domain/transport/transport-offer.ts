@@ -106,6 +106,7 @@ export class TransportOffer extends AggregateRoot {
       ...props,
       requestId: this.requestId,
       carrierId: this.carrierId,
+      vehicleId: props.vehicleId ?? this.vehicleId,
       parentOfferId: this.id,
       round: this.round + 1,
     });

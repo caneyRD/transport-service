@@ -121,7 +121,7 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
     } else {
       const result=await this.client.query(`UPDATE transport.transport_requests SET status=$2, active_assignment_id=$3,
         aggregate_version=$4,row_version=row_version+1,updated_at=now(),
-        cancelled_at=CASE WHEN $2='CANCELLED' THEN COALESCE(cancelled_at,now()) ELSE cancelled_at END
+        cancelled_at=CASE WHEN $2::transport.transport_request_status='CANCELLED' THEN COALESCE(cancelled_at,now()) ELSE cancelled_at END
         WHERE id=$1 AND row_version=$5 AND deleted_at IS NULL RETURNING row_version`,
       [p.id,request.currentStatus,request.currentAssignmentId ?? null,request.currentVersion,expected]);
       if (!result.rows[0]) throw new DomainError(`Transport request ${p.id} changed concurrently`);
