@@ -6,6 +6,7 @@ import { ViewReceivedOffersHandler } from '../application/transport/view-receive
 import { AcceptOfferHandler } from '../application/transport/accept-offer';
 import { CounterOfferHandler } from '../application/transport/counter-offer';
 import { CancelTransportRequestHandler } from '../application/transport/cancel-transport-request';
+import { ExpireOffersHandler } from '../application/transport/expire-offers';
 import { TransportRequestRepository } from '../application/transport/ports/transport-request.repository';
 import { TransportOfferRepository } from '../application/transport/ports/transport-offer.repository';
 import { MatchingCandidateRepository } from '../application/transport/ports/matching-candidate.repository';
@@ -130,6 +131,9 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         if (parts.length === 3 && parts[2] === 'offers' && request.method === 'GET') {
           const data = await new ViewReceivedOffersHandler(requests, offers).execute({ requestId, requesterId });
           return { status: 200, data: data.map(offerDto) };
+        }
+        if (parts.length === 4 && parts[2] === 'offers' && parts[3] === 'expire' && request.method === 'POST') {
+          return { status: 200, data: (await new ExpireOffersHandler(offers).execute(requestId)).map(offerDto) };
         }
         if (parts.length === 5 && parts[2] === 'offers' && request.method === 'POST') {
           const offerId = parts[3];

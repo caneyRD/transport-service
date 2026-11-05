@@ -27,6 +27,7 @@ export * from './application/transport/ports/transport-request.repository';
 export * from './application/transport/ports/matching-candidate.repository';
 export * from './application/transport/ports/transport-offer.repository';
 export * from './application/transport/view-received-offers';
+export * from './application/transport/expire-offers';
 export * from './application/transport/ports/transport-domain-outbox';
 export * from './infrastructure/in-memory/transport-request-in-memory.repository';
 export * from './infrastructure/in-memory/matching-candidate-in-memory.repository';
