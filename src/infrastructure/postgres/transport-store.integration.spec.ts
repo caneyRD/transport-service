@@ -88,6 +88,12 @@ integration('PostgreSQL transport integration', () => {
     const accepted=await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:counter.id}));
     const assignment=(await client.query('SELECT * FROM transport.assignments WHERE id=$1',[accepted.request.currentAssignmentId])).rows[0];
     expect(assignment.vehicle_id).toBe(vehicleId); expect(assignment.accepted_offer_id).toBe(counter.id);
+    const tripId=randomUUID();
+    await client.query(`INSERT INTO transport.trips(id,request_id,assignment_id,status,started_at)
+      VALUES ($1,$2,$3,'IN_PROGRESS',now())`,[tripId,request.props.id,assignment.id]);
+    await client.query(`INSERT INTO transport.tracking_points(id,trip_id,source,source_point_id,latitude,longitude,recorded_at)
+      VALUES ($1,$2,'integration',$3,18.4,-69.9,now())`,[randomUUID(),tripId,randomUUID()]);
+    expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
     const loaded=await store.execute(r=>r.requests.findById(request.props.id));
     expect(loaded?.currentAssignmentId).toBeUndefined(); expect(loaded?.currentStatus).toBe(TransportRequestStatus.CANCELLED);

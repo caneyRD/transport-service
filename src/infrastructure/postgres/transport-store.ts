@@ -20,6 +20,19 @@ export interface TransportRepositories {
   offers: TransportOfferRepository;
   candidates: MatchingCandidateRepository;
   outbox: TransportDomainOutbox;
+  tracking: PostgresTrackingRepository;
+}
+
+export class PostgresTrackingRepository {
+  constructor(private readonly client: PoolClient) {}
+  async findLiveByRequestId(requestId: string): Promise<unknown[]> {
+    const result = await this.client.query(`SELECT p.id, p.trip_id AS "tripId", p.latitude, p.longitude,
+        p.recorded_at AS "recordedAt", p.source
+      FROM transport.tracking_points p JOIN transport.trips t ON t.id=p.trip_id
+      WHERE t.request_id=$1 AND t.status='IN_PROGRESS' AND t.deleted_at IS NULL
+      ORDER BY p.recorded_at DESC, p.id DESC`, [requestId]);
+    return result.rows;
+  }
 }
 
 export class PostgresTransportOutbox implements TransportDomainOutbox {
@@ -197,7 +210,8 @@ export class PostgresTransportStore {
       await client.query('BEGIN');
       await client.query("SET LOCAL lock_timeout = '5s'");
       const result=await action({requests:new PostgresTransportRequestRepository(client,events),
-        offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox});
+        offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
+        tracking:new PostgresTrackingRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;
     } catch(error) {
       await client.query('ROLLBACK'); throw error;

@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ requests, offers, candidates: new InMemoryMatchingCandidateRepository() }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -40,6 +40,7 @@ describe('Transport HTTP API', () => {
     const selected = await call(path + '/cargo-type', 'PATCH', { type: 'AGGREGATES' });
     expect(selected.status).toBe(200); expect((await selected.json()).cargo.type).toBe('AGGREGATES');
     expect(await (await call(path + '/nearby-trucks?maxDistanceKm=20')).json()).toEqual([]);
+    expect(await (await call(path + '/tracking')).json()).toEqual([]);
     expect(await (await call(path + '/offers')).json()).toEqual([]);
     expect((await (await call(path + '/cancel', 'POST', {})).json()).status).toBe('CANCELLED');
   });

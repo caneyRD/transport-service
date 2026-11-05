@@ -19,6 +19,7 @@ export interface Repositories {
   requests: TransportRequestRepository;
   offers: TransportOfferRepository;
   candidates: MatchingCandidateRepository;
+  tracking: { findLiveByRequestId(requestId: string): Promise<unknown[]> };
 }
 export interface TransportStore {
   execute<T>(action: (repositories: Repositories) => Promise<T>): Promise<T>;
@@ -93,7 +94,7 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       const parts = url.pathname.split('/').filter(Boolean);
       if (parts[0] !== 'transport-requests') throw new HttpError(404, 'Route not found');
       const body = ['POST', 'PATCH'].includes(request.method ?? '') ? await readBody(request) : {};
-      const result = await store.execute(async ({ requests, offers, candidates }) => {
+      const result = await store.execute(async ({ requests, offers, candidates, tracking }) => {
         if (parts.length === 1 && request.method === 'POST') {
           const cargo = object(body.cargo), window = object(body.timeWindow);
           const key = request.headers['idempotency-key'];
@@ -122,6 +123,9 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
           const maxDistanceKm = rawDistance === null ? undefined : number(rawDistance.trim() === '' ? NaN : Number(rawDistance), 'maxDistanceKm');
           const data = await new FindNearbyTrucksHandler(requests, candidates).execute({ requestId, maxDistanceKm });
           return { status: 200, data };
+        }
+        if (parts.length === 3 && parts[2] === 'tracking' && request.method === 'GET') {
+          return { status: 200, data: await tracking.findLiveByRequestId(requestId) };
         }
         if (parts.length === 3 && parts[2] === 'offers' && request.method === 'GET') {
           const data = await new ViewReceivedOffersHandler(requests, offers).execute({ requestId, requesterId });

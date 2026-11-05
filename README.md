@@ -39,6 +39,7 @@ El modelo también implementa:
 - `UC-TRA-05`: Aceptar oferta.
 - `UC-TRA-06`: Contraofertar precio.
 - `UC-TRA-07`: Cancelar solicitud.
+- `UC-TRA-08`: Trackear viaje en vivo (consulta los puntos del viaje activo).
 
 Los casos de uso crean y modifican solicitudes y ofertas mediante puertos de repositorio. El servicio incluye un adapter PostgreSQL transaccional y adapters en memoria para pruebas. Las escrituras publican eventos en `transport.outbox_events` dentro de la misma transacción.
 
@@ -68,4 +69,4 @@ npm test
 npm run build
 ```
 
-La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. La fecha de avance del cronograma es el 1 de noviembre de 2026: UC-TRA-01 a UC-TRA-07 están implementados y persistidos; UC-TRA-08, UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 comienzan el 2 de noviembre según el Excel.
+La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. La fecha de avance del cronograma es el 5 de noviembre de 2026: UC-TRA-01 a UC-TRA-08 están implementados y persistidos. UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 siguen pendientes del sprint actual.
