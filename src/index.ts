@@ -20,6 +20,7 @@ export * from './domain/transport/value-objects/quantities';
 export * from './application/transport/create-transport-request';
 export * from './application/transport/select-cargo-type';
 export * from './application/transport/find-nearby-trucks';
+export * from './application/transport/calculate-route';
 export * from './application/transport/accept-offer';
 export * from './application/transport/counter-offer';
 export * from './application/transport/cancel-transport-request';

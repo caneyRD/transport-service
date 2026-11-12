@@ -2,6 +2,7 @@ import { createServer, IncomingMessage } from 'node:http';
 import { CreateTransportRequestHandler } from '../application/transport/create-transport-request';
 import { SelectCargoTypeHandler } from '../application/transport/select-cargo-type';
 import { FindNearbyTrucksHandler } from '../application/transport/find-nearby-trucks';
+import { CalculateRouteHandler } from '../application/transport/calculate-route';
 import { ViewReceivedOffersHandler } from '../application/transport/view-received-offers';
 import { AcceptOfferHandler } from '../application/transport/accept-offer';
 import { CounterOfferHandler } from '../application/transport/counter-offer';
@@ -124,6 +125,15 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
           const maxDistanceKm = rawDistance === null ? undefined : number(rawDistance.trim() === '' ? NaN : Number(rawDistance), 'maxDistanceKm');
           const data = await new FindNearbyTrucksHandler(requests, candidates).execute({ requestId, maxDistanceKm });
           return { status: 200, data };
+        }
+        if (parts.length === 3 && (parts[2] === 'compatible-trucks' || parts[2] === 'matching-candidates') && request.method === 'GET') {
+          const data = await new FindNearbyTrucksHandler(requests, candidates).execute({ requestId });
+          return { status: 200, data };
+        }
+        if (parts.length === 3 && (parts[2] === 'route' || parts[2] === 'eta') && request.method === 'GET') {
+          const route = await new CalculateRouteHandler(requests).execute(requestId);
+          return { status: 200, data: { routeId: route.id, distanceKm: route.distance.value,
+            estimatedDurationMinutes: route.estimatedDurationMinutes, calculatedAt: new Date().toISOString() } };
         }
         if (parts.length === 3 && parts[2] === 'tracking' && request.method === 'GET') {
           return { status: 200, data: await tracking.findLiveByRequestId(requestId) };
