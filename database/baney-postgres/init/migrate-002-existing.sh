@@ -17,6 +17,13 @@ if [ "$applied" = "t" ]; then
   exit 0
 fi
 
+schema_exists="$(psql -X -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -Atqc \
+  "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='baney')")"
+if [ "$schema_exists" = "t" ]; then
+  echo 'Schema baney exists without version 001; refusing to guess or overwrite it.' >&2
+  exit 1
+fi
+
 echo 'Applying BANEY unified schema 001 without dropping existing schemas...'
 psql -X -v ON_ERROR_STOP=1 -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -f /migration/002_baney_unified_baseline.sql
 echo 'BANEY unified schema migration completed.'
