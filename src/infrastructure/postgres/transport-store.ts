@@ -1,3 +1,4 @@
+import { CarrierRepository, CarrierRegistration } from '../../application/transport/register-carrier';
 import { randomUUID } from 'node:crypto';
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { AggregateRoot, DomainEvent } from '../../domain/shared/aggregate-root';
@@ -21,6 +22,20 @@ export interface TransportRepositories {
   candidates: MatchingCandidateRepository;
   outbox: TransportDomainOutbox;
   tracking: PostgresTrackingRepository;
+  carriers: CarrierRepository;
+}
+
+export class PostgresCarrierRepository implements CarrierRepository {
+  constructor(private readonly client: PoolClient) {}
+  async register(userId: string): Promise<CarrierRegistration> {
+    const result = await this.client.query(`INSERT INTO transport.driver_profiles(id,user_id,status)
+      VALUES ($1,$2,'PENDING') ON CONFLICT (user_id) DO UPDATE
+      SET user_id=EXCLUDED.user_id
+      WHERE transport.driver_profiles.deleted_at IS NULL
+      RETURNING id,user_id AS "userId",status`, [randomUUID(),userId]);
+    if (!result.rows.length) throw new DomainError('Carrier already registered and archived; contact support');
+    return result.rows[0] as CarrierRegistration;
+  }
 }
 
 export class PostgresTrackingRepository {
@@ -211,7 +226,7 @@ export class PostgresTransportStore {
       await client.query("SET LOCAL lock_timeout = '5s'");
       const result=await action({requests:new PostgresTransportRequestRepository(client,events),
         offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
-        tracking:new PostgresTrackingRepository(client)});
+        carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;
     } catch(error) {
       await client.query('ROLLBACK'); throw error;

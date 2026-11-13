@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -34,6 +34,13 @@ describe('Transport HTTP API', () => {
     const result = TransportOffer.create({ id, requestId, carrierId: 'carrier-1', price: Money.create(1500, 'DOP'), validUntil: new Date(Date.now() + 3600000) });
     result.submit(); await offers.save(result); return result;
   }
+  it('registers only the authenticated carrier without granting approval', async () => {
+    const response = await call('/carriers/me', 'POST', { userId: 'forged', status: 'ENABLED' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: 'profile-1', userId: 'client-1', status: 'PENDING' });
+    const denied = await fetch(base + '/carriers/me', { method: 'POST' });
+    expect(denied.status).toBe(401);
+  });
   it('creates, selects cargo, lists nearby trucks and offers, then cancels', async () => {
     const created = await create(); expect(created.requesterId).toBe('client-1'); expect(created.domainEvents).toBeUndefined();
     const path = `/transport-requests/${created.id}`;

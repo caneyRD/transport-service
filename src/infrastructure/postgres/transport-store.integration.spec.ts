@@ -65,6 +65,18 @@ integration('PostgreSQL transport integration', () => {
     });
     return {request,offer};
   }
+  it('registers pending carriers idempotently and preserves approval and archived profiles', async () => {
+    const first = await store.execute(r => r.carriers.register(requesterId));
+    expect(first.status).toBe('PENDING');
+    expect(first.userId).toBe(requesterId);
+    expect(await store.execute(r => r.carriers.register(requesterId))).toEqual(first);
+    const approved = await store.execute(r => r.carriers.register(carrierId));
+    expect(approved.id).toBe(driverId);
+    expect(approved.status).toBe('ENABLED');
+    await client.query('UPDATE transport.driver_profiles SET deleted_at=now() WHERE id=$1',[first.id]);
+    await expect(store.execute(r => r.carriers.register(requesterId))).rejects.toThrow('archived');
+    await client.query('UPDATE transport.driver_profiles SET deleted_at=NULL WHERE id=$1',[first.id]);
+  });
   it('reloads persisted values and event versions, and replays idempotent create',async()=>{
     const input={...command(),idempotencyKey:randomUUID()};
     const request=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(input));

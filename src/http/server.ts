@@ -1,3 +1,4 @@
+import { CarrierRepository, RegisterCarrierHandler } from '../application/transport/register-carrier';
 import { createServer, IncomingMessage } from 'node:http';
 import { CreateTransportRequestHandler } from '../application/transport/create-transport-request';
 import { SelectCargoTypeHandler } from '../application/transport/select-cargo-type';
@@ -18,6 +19,7 @@ import { CargoType } from '../domain/transport/cargo';
 import { Authenticate, HttpError } from './auth';
 
 export interface Repositories {
+  carriers: CarrierRepository;
   requests: TransportRequestRepository;
   offers: TransportOfferRepository;
   candidates: MatchingCandidateRepository;
@@ -93,6 +95,11 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         send(200, { service: 'transport-service', message: 'Backend de Transporte BANEY activo' }); return;
       }
       const requesterId = await authenticate(request.headers.authorization);
+      if (url.pathname === '/carriers/me' && request.method === 'POST') {
+        await readBody(request);
+        const carrier = await store.execute(({ carriers }) => new RegisterCarrierHandler(carriers).execute(requesterId));
+        send(200, carrier); return;
+      }
       const parts = url.pathname.split('/').filter(Boolean);
       if (parts[0] !== 'transport-requests') throw new HttpError(404, 'Route not found');
       const body = ['POST', 'PATCH'].includes(request.method ?? '') ? await readBody(request) : {};
