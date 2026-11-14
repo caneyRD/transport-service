@@ -104,6 +104,18 @@ integration('PostgreSQL transport integration', () => {
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
   });
+  it('preserves unavailable time outside a partially overlapping availability change',async()=>{
+    const now=Date.now();
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(now-3600000),new Date(now+3600000)));
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(now+1800000),new Date(now+2700000)));
+    const rows=await client.query("SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1 AND starts_at<=$2 AND ends_at>$2",[driverId,new Date(now)]);
+    expect(rows.rows).toEqual([{status:'UNAVAILABLE'}]);
+    for(const [instant,status] of [[now+2200000,'AVAILABLE'],[now+3000000,'UNAVAILABLE']] as const) {
+      const fragment=await client.query('SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1 AND starts_at<=$2 AND ends_at>$2',[driverId,new Date(instant)]);
+      expect(fragment.rows).toEqual([{status}]);
+    }
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
+  });
   it('persists scheduling, pickup windows, rescheduling, dimensions and route edits with versioned events',async()=>{
     const request=await store.execute(r=>new ReviseRequestHandler(r.requests).schedule(command()));
     const window={startsAt:new Date('2040-01-01T10:00:00Z'),endsAt:new Date('2040-01-01T12:00:00Z')};
@@ -140,7 +152,7 @@ integration('PostgreSQL transport integration', () => {
     expect(trip.status).toBe('IN_PROGRESS');
     expect((await store.execute(r=>r.requests.findById(request.props.id)))?.currentStatus).toBe('IN_PROGRESS');
     expect((await store.execute(r=>new TripOperationsHandler(r.operations).start(request.props.id,carrierId)) as {id:string}).id).toBe(trip.id);
-    const input={latitude:18.4,longitude:-69.9,recordedAt:new Date(),sourcePointId:randomUUID()};
+    const input={latitude:18.41234567,longitude:-69.91234567,recordedAt:new Date(),sourcePointId:randomUUID()};
     const point=await store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,input)) as {id:string};
     expect((await store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,input)) as {id:string}).id).toBe(point.id);
     await expect(store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,requesterId,input))).rejects.toThrow('assigned');

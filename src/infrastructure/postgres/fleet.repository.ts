@@ -34,7 +34,15 @@ export class PostgresFleetRepository implements FleetRepository {
     const busy=await this.client.query(`SELECT id FROM transport.assignments WHERE driver_profile_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`,[profile.id]);
     if (busy.rows.length) throw new DomainError('Carrier already has an active assignment');
     // A new window replaces overlapping declarations, retaining non-overlapping history.
-    await this.client.query(`DELETE FROM transport.driver_availability WHERE driver_profile_id=$1 AND starts_at<$3 AND ends_at>$2`,[profile.id,startsAt,endsAt]);
+    const overlapping=await this.client.query(`SELECT * FROM transport.driver_availability
+      WHERE driver_profile_id=$1 AND starts_at<$3 AND ends_at>$2 FOR UPDATE`,[profile.id,startsAt,endsAt]);
+    for(const window of overlapping.rows) {
+      await this.client.query('DELETE FROM transport.driver_availability WHERE id=$1',[window.id]);
+      const preserve=async (start:Date,end:Date)=>this.client.query(`INSERT INTO transport.driver_availability
+        (driver_profile_id,vehicle_id,starts_at,ends_at,status) VALUES($1,$2,$3,$4,$5)`,[profile.id,window.vehicle_id,start,end,window.status]);
+      if(new Date(window.starts_at)<startsAt) await preserve(new Date(window.starts_at),startsAt);
+      if(new Date(window.ends_at)>endsAt) await preserve(endsAt,new Date(window.ends_at));
+    }
     const result=await this.client.query(`INSERT INTO transport.driver_availability(driver_profile_id,starts_at,ends_at,status)
       VALUES($1,$2,$3,$4) RETURNING *`,[profile.id,startsAt,endsAt,available ? 'AVAILABLE' : 'UNAVAILABLE']);
     return result.rows[0];

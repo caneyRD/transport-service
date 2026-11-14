@@ -1,3 +1,4 @@
+import { Location } from '../../domain/transport/value-objects/location';
 import { randomUUID } from 'node:crypto';
 import { PoolClient } from 'pg';
 import { DomainError } from '../../domain/shared/domain-error';
@@ -46,6 +47,9 @@ export class PostgresTripOperationsRepository implements TripOperationsRepositor
     return row;
   }
   async track(userId:string,point:TrackingPoint,sourcePointId:string) {
+    // Canonicalize at the same six-decimal precision as PostgreSQL numeric(9,6).
+    point=TrackingPoint.create({id:point.id,tripId:point.tripId,recordedAt:point.recordedAt,
+      location:Location.create(point.location.address,Number(point.location.latitude.toFixed(6)),Number(point.location.longitude.toFixed(6)))});
     const row=await this.active(point.tripId,userId);const source='carrier:'+userId;
     const existing=await this.client.query('SELECT * FROM transport.tracking_points WHERE source=$1 AND source_point_id=$2',[source,sourcePointId]);
     if(existing.rows[0]) {
