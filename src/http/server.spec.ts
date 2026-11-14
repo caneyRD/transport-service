@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}) }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -34,6 +34,13 @@ describe('Transport HTTP API', () => {
     const result = TransportOffer.create({ id, requestId, carrierId: 'carrier-1', price: Money.create(1500, 'DOP'), validUntil: new Date(Date.now() + 3600000) });
     result.submit(); await offers.save(result); return result;
   }
+  it('exposes verification and validates fleet inputs through HTTP', async()=>{
+    expect((await (await call('/carriers/me/verification')).json()).userId).toBe('client-1');
+    const invalid=await call('/vehicles','POST',{registrationNumber:'A',bodyType:'DUMP_TRUCK',capacityValue:2,capacityUnit:'TON',capacityKg:2000});
+    expect(invalid.status).toBe(400);
+    const availability=await call('/carriers/me/availability','PUT',{available:'yes',startsAt:'2030-01-01',endsAt:'2030-01-02'});
+    expect(availability.status).toBe(400);
+  });
   it('registers only the authenticated carrier without granting approval', async () => {
     const response = await call('/carriers/me', 'POST', { userId: 'forged', status: 'ENABLED' });
     expect(response.status).toBe(200);

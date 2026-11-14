@@ -1,3 +1,4 @@
+import { PostgresFleetRepository } from './fleet.repository';
 import { CarrierRepository, CarrierRegistration } from '../../application/transport/register-carrier';
 import { randomUUID } from 'node:crypto';
 import { Pool, PoolClient, QueryResultRow } from 'pg';
@@ -23,6 +24,7 @@ export interface TransportRepositories {
   outbox: TransportDomainOutbox;
   tracking: PostgresTrackingRepository;
   carriers: CarrierRepository;
+  fleet: PostgresFleetRepository;
 }
 
 export class PostgresCarrierRepository implements CarrierRepository {
@@ -122,6 +124,7 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
           JOIN transport.vehicles v ON v.id=o.vehicle_id AND v.owner_id=o.carrier_id
           WHERE o.request_id=$1 AND o.status='ACCEPTED' AND o.deleted_at IS NULL
           AND d.status='ENABLED' AND d.deleted_at IS NULL AND v.status='ENABLED' AND v.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM transport.driver_availability a WHERE a.driver_profile_id=d.id AND a.starts_at<=now() AND a.ends_at>now() AND a.status='UNAVAILABLE')
           FOR UPDATE OF d,v`,[p.id]);
         const candidate=eligible.rows[0];
         if (!candidate) throw new DomainError('Assignment requires an accepted offer with an enabled carrier and vehicle');
@@ -208,6 +211,7 @@ export class PostgresMatchingCandidateRepository implements MatchingCandidateRep
       JOIN transport.driver_profiles d ON d.id=c.driver_profile_id JOIN transport.vehicles v ON v.id=c.vehicle_id
       WHERE c.request_id=$1 AND (c.expires_at IS NULL OR c.expires_at>now())
       AND d.status='ENABLED' AND d.deleted_at IS NULL AND v.status='ENABLED' AND v.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM transport.driver_availability a WHERE a.driver_profile_id=d.id AND a.starts_at<=now() AND a.ends_at>now() AND a.status='UNAVAILABLE')
       ORDER BY c.distance_km ASC NULLS LAST,c.score DESC,c.id`,[id]);
     return result.rows.map(r=>MatchingCandidate.create({id:r.id,requestId:r.request_id,carrierId:r.carrier_id,
       vehicleId:r.vehicle_id,score:Number(r.score),distanceKm:r.distance_km===null ? undefined : Number(r.distance_km)}));
@@ -226,7 +230,7 @@ export class PostgresTransportStore {
       await client.query("SET LOCAL lock_timeout = '5s'");
       const result=await action({requests:new PostgresTransportRequestRepository(client,events),
         offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
-        carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
+        fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;
     } catch(error) {
       await client.query('ROLLBACK'); throw error;

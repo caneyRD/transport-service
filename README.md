@@ -76,3 +76,11 @@ La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configur
 `POST /carriers/me` requiere JWT y un objeto JSON (puede ser `{}`). Registra al usuario autenticado en `transport.driver_profiles` con estado `PENDING`; responde 200 con `id`, `userId` y `status`. Los reintentos devuelven el mismo perfil y conservan su estado. Un perfil archivado requiere soporte (409). El registro no habilita al transportista ni sustituye KYC. No requiere migraciones nuevas.
 
 Validación del 13 de noviembre de 2026: 53 pruebas exitosas, incluyendo PostgreSQL por VPN con fixtures revertidos; compilación y lint exitosos. Cronograma actualizado en `outputs/cronograma-2026-11-13/`.
+
+### Flota y disponibilidad (UC-TRA-21 a UC-TRA-24)
+
+- `GET /carriers/me/verification`: estado operativo persistido del perfil autenticado (PENDING/ENABLED/DISABLED/SUSPENDED).
+- `POST /vehicles`, `PUT /vehicles/:id`: placa, tipo, capacityValue, capacityUnit y capacityKg. Requiere perfil registrado; solo el propietario edita, sin asignación activa. Altas y modificaciones requieren aprobación (`PENDING`).
+- `PUT /carriers/me/availability`: available boolean, startsAt y endsAt ISO. Activar exige perfil habilitado; no se permite durante una asignación activa. Reemplaza ventanas solapadas. Las ventanas UNAVAILABLE vigentes excluyen matching y asignaciones.
+
+Persistencia compatible con vehicles y driver_availability existentes. 58 pruebas exitosas con PostgreSQL por VPN, compilación y lint (14 noviembre 2026).

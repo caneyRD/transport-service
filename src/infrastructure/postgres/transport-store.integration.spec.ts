@@ -1,3 +1,5 @@
+import { ManageFleetHandler } from '../../application/transport/manage-fleet';
+import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
 import { randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PostgresTransportStore } from './transport-store';
@@ -76,6 +78,27 @@ integration('PostgreSQL transport integration', () => {
     await client.query('UPDATE transport.driver_profiles SET deleted_at=now() WHERE id=$1',[first.id]);
     await expect(store.execute(r => r.carriers.register(requesterId))).rejects.toThrow('archived');
     await client.query('UPDATE transport.driver_profiles SET deleted_at=NULL WHERE id=$1',[first.id]);
+  });
+  it('reads verification, registers and edits owned vehicles without retaining approval',async()=>{
+    expect((await store.execute(r=>new ManageFleetHandler(r.fleet).verification(carrierId))).status).toBe('ENABLED');
+    const input={registrationNumber:randomUUID(),bodyType:VehicleBodyType.FLATBED,capacityValue:10,capacityUnit:VehicleCapacityUnit.TON,capacityKg:10000};
+    const vehicle=await store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,input)) as {id:string;status:string};
+    expect(vehicle.status).toBe('PENDING');
+    await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(requesterId,input,vehicle.id))).rejects.toThrow('not found');
+    await client.query("UPDATE transport.vehicles SET status='ENABLED' WHERE id=$1",[vehicle.id]);
+    const edited=await store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,{...input,capacityKg:11000},vehicle.id)) as {status:string;capacity_kg:string};
+    expect(edited.status).toBe('PENDING'); expect(Number(edited.capacity_kg)).toBe(11000);
+    await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,input))).rejects.toMatchObject({code:'23505'});
+  });
+  it('persists availability without altering verification and forbids pending carriers becoming available',async()=>{
+    const start=new Date(Date.now()-1000),end=new Date(Date.now()+3600000);
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,start,end));
+    const rows=await client.query('SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1',[driverId]);
+    expect(rows.rows).toEqual([{status:'UNAVAILABLE'}]);
+    expect((await store.execute(r=>r.fleet.verification(carrierId)))?.status).toBe('ENABLED');
+    await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
   });
   it('reloads persisted values and event versions, and replays idempotent create',async()=>{
     const input={...command(),idempotencyKey:randomUUID()};

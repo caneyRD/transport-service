@@ -1,3 +1,5 @@
+import { FleetRepository, ManageFleetHandler } from '../application/transport/manage-fleet';
+import { VehicleBodyType, VehicleCapacityUnit } from '../domain/transport/vehicle';
 import { CarrierRepository, RegisterCarrierHandler } from '../application/transport/register-carrier';
 import { createServer, IncomingMessage } from 'node:http';
 import { CreateTransportRequestHandler } from '../application/transport/create-transport-request';
@@ -19,6 +21,7 @@ import { CargoType } from '../domain/transport/cargo';
 import { Authenticate, HttpError } from './auth';
 
 export interface Repositories {
+  fleet: FleetRepository;
   carriers: CarrierRepository;
   requests: TransportRequestRepository;
   offers: TransportOfferRepository;
@@ -99,6 +102,23 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         await readBody(request);
         const carrier = await store.execute(({ carriers }) => new RegisterCarrierHandler(carriers).execute(requesterId));
         send(200, carrier); return;
+      }
+      const fleetParts = url.pathname.split('/').filter(Boolean);
+      if (url.pathname === '/carriers/me/verification' && request.method === 'GET') {
+        send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).verification(requesterId))); return;
+      }
+      if (url.pathname === '/carriers/me/availability' && request.method === 'PUT') {
+        const body=await readBody(request);
+        if (typeof body.available !== 'boolean') throw new HttpError(400,'available must be boolean');
+        send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).availability(requesterId,body.available as boolean,date(body.startsAt,'startsAt'),date(body.endsAt,'endsAt')))); return;
+      }
+      if (fleetParts[0] === 'vehicles' && ((fleetParts.length === 1 && request.method === 'POST') || (fleetParts.length === 2 && request.method === 'PUT'))) {
+        const body=await readBody(request);
+        const data=await store.execute(({fleet}) => new ManageFleetHandler(fleet).vehicle(requesterId, {
+          registrationNumber:text(body.registrationNumber,'registrationNumber'),bodyType:text(body.bodyType,'bodyType') as VehicleBodyType,
+          capacityValue:number(body.capacityValue,'capacityValue'),capacityUnit:text(body.capacityUnit,'capacityUnit') as VehicleCapacityUnit,
+          capacityKg:number(body.capacityKg,'capacityKg') },fleetParts[1]));
+        send(fleetParts.length === 1 ? 201 : 200,data); return;
       }
       const parts = url.pathname.split('/').filter(Boolean);
       if (parts[0] !== 'transport-requests') throw new HttpError(404, 'Route not found');
