@@ -29,6 +29,12 @@ export class Trip extends AggregateRoot {
     return new Trip(props.id, props.requestId, props.assignment.id, props.routeId);
   }
 
+  static restore(props:{id:string;requestId:string;assignmentId:string;status:TripStatus;version:number}):Trip {
+    if(!Object.values(TripStatus).includes(props.status)) throw new DomainError('Invalid trip status');
+    const trip=new Trip(props.id,props.requestId,props.assignmentId);
+    trip.status=props.status;trip.restoreVersion(props.version);return trip;
+  }
+
   get currentStatus(): TripStatus { return this.status; }
   start(): void {
     if (this.status !== TripStatus.PLANNED) throw new DomainError('Only a planned trip can start');

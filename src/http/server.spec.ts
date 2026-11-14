@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ tripHistory:{history:async()=>[]}, fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}) }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[]}, fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}) }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -58,6 +58,14 @@ describe('Transport HTTP API', () => {
     expect((await call('/trips/history?limit=1000')).status).toBe(400);
     // The fixture profile is pending, so carrier-only load data stays protected.
     expect((await call('/carrier/requests/'+request.id+'/cargo')).status).toBe(409);
+  });
+  it('exposes start, GPS and incident routes with validated types',async()=>{
+    expect((await call('/carrier/requests/request-1/start','POST',{})).status).toBe(200);
+    const point=await call('/trips/trip-1/tracking','POST',{latitude:18,longitude:-69,recordedAt:new Date().toISOString(),sourcePointId:'point-1'});expect(point.status).toBe(200);
+    for(const [route,type] of [['incidents','OTHER'],['breakdown','BREAKDOWN'],['delay','DELAY'],['cargo-damage','DAMAGE']]) {
+      const result=await call('/trips/trip-1/'+route,'POST',{type:'OTHER',description:'Test'});expect(result.status).toBe(200);expect((await result.json()).type).toBe(type);
+    }
+    expect((await call('/trips/trip-1/incidents','POST',{type:'BAD',description:'Test'})).status).toBe(400);
   });
   it('registers only the authenticated carrier without granting approval', async () => {
     const response = await call('/carriers/me', 'POST', { userId: 'forged', status: 'ENABLED' });

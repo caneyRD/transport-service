@@ -11,6 +11,7 @@ export class TrackingPoint {
 
   static create(props: { id: string; tripId: string; location: Location; recordedAt?: Date }): TrackingPoint {
     if (!props.id.trim() || !props.tripId.trim()) throw new DomainError('Tracking point id and trip id are required');
+    if(props.recordedAt && !Number.isFinite(props.recordedAt.getTime())) throw new DomainError('Invalid tracking date');
     return new TrackingPoint(props.id, props.tripId, props.location, props.recordedAt ?? new Date());
   }
 }

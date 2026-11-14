@@ -1,3 +1,5 @@
+import { TripOperationsHandler } from '../../application/transport/trip-operations';
+import { TransportExceptionType } from '../../domain/transport/transport-exception';
 import { TransportQueries } from '../../application/transport/transport-queries';
 import { ReviseRequestHandler } from '../../application/transport/revise-request';
 import { ManageFleetHandler } from '../../application/transport/manage-fleet';
@@ -130,6 +132,33 @@ integration('PostgreSQL transport integration', () => {
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
     await expect(store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).route(request.props.id,carrierId))).rejects.toThrow('available');
   });
+  it('starts the assigned trip, tracks GPS idempotently and persists incidents with outbox atomically',async()=>{
+    const {request,offer}=await offeredRequest();
+    await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:offer.id}));
+    await expect(store.execute(r=>new TripOperationsHandler(r.operations).start(request.props.id,requesterId))).rejects.toThrow('assigned');
+    const trip=await store.execute(r=>new TripOperationsHandler(r.operations).start(request.props.id,carrierId)) as {id:string;status:string};
+    expect(trip.status).toBe('IN_PROGRESS');
+    expect((await store.execute(r=>r.requests.findById(request.props.id)))?.currentStatus).toBe('IN_PROGRESS');
+    expect((await store.execute(r=>new TripOperationsHandler(r.operations).start(request.props.id,carrierId)) as {id:string}).id).toBe(trip.id);
+    const input={latitude:18.4,longitude:-69.9,recordedAt:new Date(),sourcePointId:randomUUID()};
+    const point=await store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,input)) as {id:string};
+    expect((await store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,input)) as {id:string}).id).toBe(point.id);
+    await expect(store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,requesterId,input))).rejects.toThrow('assigned');
+    await expect(store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,{...input,latitude:19}))).rejects.toThrow('different data');
+    await expect(store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,{...input,sourcePointId:randomUUID(),recordedAt:new Date(0)}))).rejects.toThrow('chronological');
+    expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);
+    for(const type of [TransportExceptionType.OTHER,TransportExceptionType.BREAKDOWN,TransportExceptionType.DELAY,TransportExceptionType.DAMAGE]) {
+      const incident=await store.execute(r=>new TripOperationsHandler(r.operations).incident(trip.id,carrierId,type,'Test incident')) as {type:string};expect(incident.type).toBe(type);
+    }
+    await expect(store.execute(async r=>{await new TripOperationsHandler(r.operations).incident(trip.id,carrierId,TransportExceptionType.OTHER,'Rollback');throw new Error('Injected');})).rejects.toThrow('Injected');
+    expect((await client.query('SELECT count(*)::int AS count FROM transport.transport_exceptions WHERE trip_id=$1',[trip.id])).rows[0].count).toBe(4);
+    expect((await client.query("SELECT aggregate_version FROM transport.outbox_events WHERE aggregate_type='Trip' AND aggregate_id=$1 ORDER BY aggregate_version",[trip.id])).rows.map(r=>r.aggregate_version)).toEqual([1,2,3,4,5,6]);
+    await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(),new Date(Date.now()+3600000)))).rejects.toThrow('active assignment');
+    const vehicle={registrationNumber:'TEST',bodyType:VehicleBodyType.DUMP_TRUCK,capacityValue:20,capacityUnit:VehicleCapacityUnit.M3,capacityKg:25000};
+    await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,vehicle,vehicleId))).rejects.toThrow('active assignment');
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
+    await expect(store.execute(r=>new TripOperationsHandler(r.operations).incident(trip.id,carrierId,TransportExceptionType.OTHER,'After cancel'))).rejects.toThrow('in-progress');
+  });
   it('reloads persisted values and event versions, and replays idempotent create',async()=>{
     const input={...command(),idempotencyKey:randomUUID()};
     const request=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(input));
@@ -159,7 +188,7 @@ integration('PostgreSQL transport integration', () => {
     await client.query(`INSERT INTO transport.tracking_points(id,trip_id,source,source_point_id,latitude,longitude,recorded_at)
       VALUES ($1,$2,'integration',$3,18.4,-69.9,now())`,[randomUUID(),tripId,randomUUID()]);
     expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);
-    expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId))).toHaveLength(1);
+    expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId))).toEqual(expect.arrayContaining([expect.objectContaining({id:tripId,requestId:request.props.id})]));
     expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(carrierId))).toEqual([]);
 
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));

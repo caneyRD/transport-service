@@ -75,20 +75,30 @@ La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configur
 
 `POST /carriers/me` requiere JWT y un objeto JSON (puede ser `{}`). Registra al usuario autenticado en `transport.driver_profiles` con estado `PENDING`; responde 200 con `id`, `userId` y `status`. Los reintentos devuelven el mismo perfil y conservan su estado. Un perfil archivado requiere soporte (409). El registro no habilita al transportista ni sustituye KYC. No requiere migraciones nuevas.
 
-Validación del 13 de noviembre de 2026: 53 pruebas exitosas, incluyendo PostgreSQL por VPN con fixtures revertidos; compilación y lint exitosos. Cronograma actualizado en `outputs/cronograma-2026-11-13/`.
+Validaciï¿½n del 13 de noviembre de 2026: 53 pruebas exitosas, incluyendo PostgreSQL por VPN con fixtures revertidos; compilaciï¿½n y lint exitosos. Cronograma actualizado en `outputs/cronograma-2026-11-13/`.
 
 ### Flota y disponibilidad (UC-TRA-21 a UC-TRA-24)
 
 - `GET /carriers/me/verification`: estado operativo persistido del perfil autenticado (PENDING/ENABLED/DISABLED/SUSPENDED).
-- `POST /vehicles`, `PUT /vehicles/:id`: placa, tipo, capacityValue, capacityUnit y capacityKg. Requiere perfil registrado; solo el propietario edita, sin asignación activa. Altas y modificaciones requieren aprobación (`PENDING`).
-- `PUT /carriers/me/availability`: available boolean, startsAt y endsAt ISO. Activar exige perfil habilitado; no se permite durante una asignación activa. Reemplaza ventanas solapadas. Las ventanas UNAVAILABLE vigentes excluyen matching y asignaciones.
+- `POST /vehicles`, `PUT /vehicles/:id`: placa, tipo, capacityValue, capacityUnit y capacityKg. Requiere perfil registrado; solo el propietario edita, sin asignaciï¿½n activa. Altas y modificaciones requieren aprobaciï¿½n (`PENDING`).
+- `PUT /carriers/me/availability`: available boolean, startsAt y endsAt ISO. Activar exige perfil habilitado; no se permite durante una asignaciï¿½n activa. Reemplaza ventanas solapadas. Las ventanas UNAVAILABLE vigentes excluyen matching y asignaciones.
 
-Persistencia compatible con vehicles y driver_availability existentes. 58 pruebas exitosas con PostgreSQL por VPN, compilación y lint (14 noviembre 2026).
+Persistencia compatible con vehicles y driver_availability existentes. 58 pruebas exitosas con PostgreSQL por VPN, compilaciï¿½n y lint (14 noviembre 2026).
 
-### Programación y cambios antes del matching
+### Programaciï¿½n y cambios antes del matching
 
-UC-TRA-52: `POST /transport-requests/scheduled` usa el mismo JSON de creación y exige ventana futura. UC-TRA-53 y UC-TRA-55: `PATCH /transport-requests/:id/pickup-window` o `/reschedule` con startsAt/endsAt ISO. UC-TRA-56: `PATCH /transport-requests/:id` admite cargo, origin y destination. UC-TRA-62 y UC-TRA-63: `PATCH /transport-requests/:id/cargo-weight` con weightKg y `/cargo-volume` con volumeM3. Todas las modificaciones requieren propietario y estado OPEN; conservan unidades y tipo de carga, incrementan versiones y escriben el evento TransportRequestRevised transaccionalmente. Ventanas inválidas/pasadas y cantidades no positivas se rechazan. 62 pruebas exitosas con PostgreSQL (14 noviembre 2026).
+UC-TRA-52: `POST /transport-requests/scheduled` usa el mismo JSON de creaciï¿½n y exige ventana futura. UC-TRA-53 y UC-TRA-55: `PATCH /transport-requests/:id/pickup-window` o `/reschedule` con startsAt/endsAt ISO. UC-TRA-56: `PATCH /transport-requests/:id` admite cargo, origin y destination. UC-TRA-62 y UC-TRA-63: `PATCH /transport-requests/:id/cargo-weight` con weightKg y `/cargo-volume` con volumeM3. Todas las modificaciones requieren propietario y estado OPEN; conservan unidades y tipo de carga, incrementan versiones y escriben el evento TransportRequestRevised transaccionalmente. Ventanas invï¿½lidas/pasadas y cantidades no positivas se rechazan. 62 pruebas exitosas con PostgreSQL (14 noviembre 2026).
 
 ### Historial y consultas previas a ofertar
 
-UC-TRA-16: `GET /trips/history?limit=25&offset=0` devuelve solo viajes del cliente autenticado, con paginación (máximo 100), fechas, estado y direcciones. UC-TRA-75: `GET /transport-requests/:id/compare-offers` ordena ofertas vigentes por moneda y precio (sin conversión entre monedas). UC-TRA-121/122/123: `GET /carrier/requests/:id/cargo`, `/route`, `/distance` requieren transportista habilitado y solicitud abierta a ofertas. Ruta y distancia son estimaciones geodésicas explícitas, no navegación por carreteras. Los datos proceden de solicitudes/ofertas/viajes PostgreSQL. 64 pruebas exitosas con PostgreSQL (14 noviembre 2026).
+UC-TRA-16: `GET /trips/history?limit=25&offset=0` devuelve solo viajes del cliente autenticado, con paginaciï¿½n (mï¿½ximo 100), fechas, estado y direcciones. UC-TRA-75: `GET /transport-requests/:id/compare-offers` ordena ofertas vigentes por moneda y precio (sin conversiï¿½n entre monedas). UC-TRA-121/122/123: `GET /carrier/requests/:id/cargo`, `/route`, `/distance` requieren transportista habilitado y solicitud abierta a ofertas. Ruta y distancia son estimaciones geodï¿½sicas explï¿½citas, no navegaciï¿½n por carreteras. Los datos proceden de solicitudes/ofertas/viajes PostgreSQL. 64 pruebas exitosas con PostgreSQL (14 noviembre 2026).
+
+### Operaciï¿½n del viaje e incidentes
+
+UC-TRA-135: `POST /carrier/requests/:id/start` con `{}` inicia el viaje de la asignaciï¿½n activa; solo el transportista asignado y habilitado puede hacerlo. El reintento devuelve el viaje existente. Actualiza solicitud, viaje y outbox en la misma transacciï¿½n.
+
+UC-TRA-46: `POST /trips/:id/tracking` con latitude, longitude, recordedAt ISO y sourcePointId. Solo el transportista asignado puede actualizar un viaje en progreso. Reintentos idï¿½nticos no duplican puntos/eventos; se rechazan datos distintos para el mismo identificador, fechas futuras y puntos fuera de orden. La consulta de tracking del cliente obtiene los puntos persistidos.
+
+UC-TRA-36: `POST /trips/:id/incidents` con type (DELAY/DAMAGE/BREAKDOWN/ROUTE_DEVIATION/OTHER) y description. UC-TRA-143/145/152: `/breakdown`, `/delay`, `/cargo-damage` fijan el tipo y requieren description. Solo el transportista asignado durante el viaje puede reportar; persiste excepciï¿½n y evento con versiï¿½n del viaje. La cancelaciï¿½n de solicitud cancela tambiï¿½n sus viajes abiertos.
+
+Resultado al 14 noviembre 2026: 35 de 95 casos calendarizados de Transporte implementados, 60 pendientes. En esta continuaciï¿½n se completaron 21 casos en cuatro lotes, con 69 pruebas exitosas (19 suites), incluidas integraciï¿½n PostgreSQL por VPN y rollback. El alcance marcado es backend/API/PostgreSQL; no acredita UI ni QA cruzado del equipo.

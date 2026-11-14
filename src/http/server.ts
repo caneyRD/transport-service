@@ -1,3 +1,5 @@
+import { TripOperationsRepository, TripOperationsHandler } from '../application/transport/trip-operations';
+import { TransportExceptionType } from '../domain/transport/transport-exception';
 import { TransportQueries, TripHistoryRepository } from '../application/transport/transport-queries';
 import { ReviseRequestHandler, ReviseRequest } from '../application/transport/revise-request';
 import { FleetRepository, ManageFleetHandler } from '../application/transport/manage-fleet';
@@ -23,6 +25,7 @@ import { CargoType } from '../domain/transport/cargo';
 import { Authenticate, HttpError } from './auth';
 
 export interface Repositories {
+  operations: TripOperationsRepository;
   tripHistory: TripHistoryRepository;
   fleet: FleetRepository;
   carriers: CarrierRepository;
@@ -112,6 +115,20 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         send(200,await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId,limit,offset))); return;
       }
       const fleetParts = url.pathname.split('/').filter(Boolean);
+      if(fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && fleetParts[3]==='start' && request.method==='POST') {
+        await readBody(request);
+        send(200,await store.execute(r=>new TripOperationsHandler(r.operations).start(fleetParts[2],requesterId)));return;
+      }
+      if(fleetParts.length===3 && fleetParts[0]==='trips' && request.method==='POST' && ['tracking','incidents','breakdown','delay','cargo-damage'].includes(fleetParts[2])) {
+        const body=await readBody(request);
+        const data=await store.execute(r=>{
+          const handler=new TripOperationsHandler(r.operations);
+          if(fleetParts[2]==='tracking') return handler.track(fleetParts[1],requesterId,{latitude:number(body.latitude,'latitude'),longitude:number(body.longitude,'longitude'),recordedAt:date(body.recordedAt,'recordedAt'),sourcePointId:text(body.sourcePointId,'sourcePointId')});
+          const type=fleetParts[2]==='breakdown' ? TransportExceptionType.BREAKDOWN : fleetParts[2]==='delay' ? TransportExceptionType.DELAY : fleetParts[2]==='cargo-damage' ? TransportExceptionType.DAMAGE : text(body.type,'type') as TransportExceptionType;
+          return handler.incident(fleetParts[1],requesterId,type,text(body.description,'description'));
+        });send(200,data);return;
+      }
+
       if (url.pathname === '/carriers/me/verification' && request.method === 'GET') {
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).verification(requesterId))); return;
       }

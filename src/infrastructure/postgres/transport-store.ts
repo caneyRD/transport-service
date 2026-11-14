@@ -1,3 +1,4 @@
+import { PostgresTripOperationsRepository } from './trip-operations.repository';
 import { PostgresTripHistoryRepository } from './trip-history.repository';
 import { PostgresFleetRepository } from './fleet.repository';
 import { CarrierRepository, CarrierRegistration } from '../../application/transport/register-carrier';
@@ -27,6 +28,7 @@ export interface TransportRepositories {
   carriers: CarrierRepository;
   fleet: PostgresFleetRepository;
   tripHistory: PostgresTripHistoryRepository;
+  operations: PostgresTripOperationsRepository;
 }
 
 export class PostgresCarrierRepository implements CarrierRepository {
@@ -139,6 +141,9 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
       }
     }
     if (request.currentStatus === TransportRequestStatus.CANCELLED) {
+      await this.client.query(`UPDATE transport.trips SET status='CANCELLED',updated_at=now()
+        WHERE request_id=$1 AND status IN ('PLANNED','IN_PROGRESS') AND deleted_at IS NULL`,[p.id]);
+
       await this.client.query(`UPDATE transport.assignments SET status='RELEASED',released_at=now()
         WHERE request_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`,[p.id]);
     }
@@ -231,7 +236,8 @@ export class PostgresTransportStore {
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL lock_timeout = '5s'");
-      const result=await action({requests:new PostgresTransportRequestRepository(client,events),
+      const requests=new PostgresTransportRequestRepository(client,events);
+      const result=await action({requests,operations:new PostgresTripOperationsRepository(client,requests,outbox),
         offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
         tripHistory:new PostgresTripHistoryRepository(client),fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;

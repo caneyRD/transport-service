@@ -22,6 +22,7 @@ export type TransportDomainEvent = DomainEvent & {
     | 'TripCancelled'
     | 'TransportRequestInProgress'
     | 'TransportRequestCompleted'
+    | 'TransportExceptionReported'
     | 'TrackingUpdated';
 };
 

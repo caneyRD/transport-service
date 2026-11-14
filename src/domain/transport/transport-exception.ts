@@ -20,6 +20,8 @@ export class TransportException {
   static create(props: { id: string; tripId: string; type: TransportExceptionType; description: string; occurredAt?: Date }): TransportException {
     if (!props.id.trim() || !props.tripId.trim()) throw new DomainError('Exception id and trip id are required');
     if (!props.description.trim()) throw new DomainError('Exception description is required');
+    if(!Object.values(TransportExceptionType).includes(props.type)) throw new DomainError('Invalid exception type');
+    if(props.occurredAt && !Number.isFinite(props.occurredAt.getTime())) throw new DomainError('Invalid exception date');
     return new TransportException(props.id, props.tripId, props.type, props.description.trim(), props.occurredAt ?? new Date());
   }
 }
