@@ -20,10 +20,10 @@ export enum TransportRequestStatus {
 export interface TransportRequestProps {
   readonly id: string;
   readonly requesterId: string;
-  readonly cargo: Cargo;
-  readonly origin: Location;
-  readonly destination: Location;
-  readonly timeWindow: TimeWindow;
+  cargo: Cargo;
+  origin: Location;
+  destination: Location;
+  timeWindow: TimeWindow;
 }
 
 const transitions: Record<TransportRequestStatus, TransportRequestStatus[]> = {
@@ -71,6 +71,15 @@ export class TransportRequest extends AggregateRoot {
       throw new DomainError('Cargo type can only be selected for an open request');
     }
     this.props.cargo.selectType(type);
+  }
+
+  revise(changes: {cargo?: Cargo; origin?: Location; destination?: Location; timeWindow?: TimeWindow}): void {
+    if (this.status !== TransportRequestStatus.OPEN) throw new DomainError('Only an open request before matching can be modified');
+    if (changes.cargo) this.props.cargo=changes.cargo;
+    if (changes.origin) this.props.origin=changes.origin;
+    if (changes.destination) this.props.destination=changes.destination;
+    if (changes.timeWindow) this.props.timeWindow=changes.timeWindow;
+    this.addEvent('TransportRequestRevised', {});
   }
 
   open(): void {

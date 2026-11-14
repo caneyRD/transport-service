@@ -1,3 +1,4 @@
+import { ReviseRequestHandler } from '../../application/transport/revise-request';
 import { ManageFleetHandler } from '../../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
 import { randomUUID } from 'node:crypto';
@@ -99,6 +100,22 @@ integration('PostgreSQL transport integration', () => {
     expect((await store.execute(r=>r.fleet.verification(carrierId)))?.status).toBe('ENABLED');
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
+  });
+  it('persists scheduling, pickup windows, rescheduling, dimensions and route edits with versioned events',async()=>{
+    const request=await store.execute(r=>new ReviseRequestHandler(r.requests).schedule(command()));
+    const window={startsAt:new Date('2040-01-01T10:00:00Z'),endsAt:new Date('2040-01-01T12:00:00Z')};
+    await store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,requesterId,{timeWindow:window}));
+    await store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,requesterId,{timeWindow:{startsAt:new Date('2040-01-02'),endsAt:new Date('2040-01-03')}}));
+    await store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,requesterId,{cargo:{weightKg:2200}}));
+    await store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,requesterId,{cargo:{volumeM3:4}}));
+    await store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,requesterId,{origin:{address:'Revised',latitude:18,longitude:-69},cargo:{description:'New load'}}));
+    const loaded=(await store.execute(r=>r.requests.findById(request.props.id)))!;
+    expect(loaded.props.timeWindow.startsAt.toISOString()).toBe('2040-01-02T00:00:00.000Z');
+    expect(loaded.props.cargo.weight?.value).toBe(2200);expect(loaded.props.cargo.volume?.value).toBe(4);
+    expect(loaded.props.origin.address).toBe('Revised');expect(loaded.props.cargo.description).toBe('New load');
+    const events=await client.query("SELECT count(*)::int AS count FROM transport.outbox_events WHERE aggregate_id=$1 AND event_type='TransportRequestRevised'",[request.props.id]);
+    expect(events.rows[0].count).toBe(5);
+    await expect(store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,carrierId,{cargo:{weightKg:1}}))).rejects.toThrow('owner');
   });
   it('reloads persisted values and event versions, and replays idempotent create',async()=>{
     const input={...command(),idempotencyKey:randomUUID()};

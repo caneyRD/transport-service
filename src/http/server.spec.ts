@@ -41,6 +41,16 @@ describe('Transport HTTP API', () => {
     const availability=await call('/carriers/me/availability','PUT',{available:'yes',startsAt:'2030-01-01',endsAt:'2030-01-02'});
     expect(availability.status).toBe(400);
   });
+  it('schedules and revises requests through all six request endpoints',async()=>{
+    const scheduled=await call('/transport-requests/scheduled','POST',{...input,timeWindow:{startsAt:'2040-01-01',endsAt:'2040-01-02'}});
+    expect(scheduled.status).toBe(201);const request=await scheduled.json();const path='/transport-requests/'+request.id;
+    for(const suffix of ['pickup-window','reschedule']) expect((await call(path+'/'+suffix,'PATCH',{startsAt:'2040-01-03',endsAt:'2040-01-04'})).status).toBe(200);
+    expect((await call(path+'/cargo-weight','PATCH',{weightKg:250})).status).toBe(200);
+    expect((await call(path+'/cargo-volume','PATCH',{volumeM3:3})).status).toBe(200);
+    const revised=await call(path,'PATCH',{cargo:{description:'Updated'}});expect(revised.status).toBe(200);
+    const data=await revised.json();expect(data.cargo).toMatchObject({description:'Updated',weightKg:250,volumeM3:3});
+    expect((await call(path+'/cargo-weight','PATCH',{weightKg:1},'foreign')).status).toBe(403);
+  });
   it('registers only the authenticated carrier without granting approval', async () => {
     const response = await call('/carriers/me', 'POST', { userId: 'forged', status: 'ENABLED' });
     expect(response.status).toBe(200);

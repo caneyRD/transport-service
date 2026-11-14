@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 export type TransportDomainEvent = DomainEvent & {
   readonly type:
+    | 'TransportRequestRevised'
     | 'TransportRequestCreated'
     | 'TransportRequestOpened'
     | 'TransportMatchingStarted'

@@ -1,3 +1,4 @@
+import { ReviseRequestHandler, ReviseRequest } from '../application/transport/revise-request';
 import { FleetRepository, ManageFleetHandler } from '../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../domain/transport/vehicle';
 import { CarrierRepository, RegisterCarrierHandler } from '../application/transport/register-carrier';
@@ -124,10 +125,11 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       if (parts[0] !== 'transport-requests') throw new HttpError(404, 'Route not found');
       const body = ['POST', 'PATCH'].includes(request.method ?? '') ? await readBody(request) : {};
       const result = await store.execute(async ({ requests, offers, candidates, tracking }) => {
-        if (parts.length === 1 && request.method === 'POST') {
+        if ((parts.length === 1 || (parts.length === 2 && parts[1] === 'scheduled')) && request.method === 'POST') {
           const cargo = object(body.cargo), window = object(body.timeWindow);
           const key = request.headers['idempotency-key'];
-          const created = await new CreateTransportRequestHandler(requests).execute({
+          const creator=parts.length===2 ? new ReviseRequestHandler(requests).schedule.bind(new ReviseRequestHandler(requests)) : new CreateTransportRequestHandler(requests).execute.bind(new CreateTransportRequestHandler(requests));
+          const created = await creator({
             requesterId, idempotencyKey: key === undefined ? undefined : text(key, 'Idempotency-Key'),
             cargo: { description: text(cargo.description, 'cargo.description'),
               weightKg: cargo.weightKg === undefined ? undefined : number(cargo.weightKg, 'weightKg'),
@@ -142,6 +144,21 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const owned = await requests.findById(requestId);
         if (!owned) throw new HttpError(404, 'Transport request was not found');
         if (owned.props.requesterId !== requesterId) throw new HttpError(403, 'Only the request owner can access this request');
+        if (request.method === 'PATCH' && (parts.length===2 || (parts.length===3 && ['pickup-window','reschedule','cargo-weight','cargo-volume'].includes(parts[2])))) {
+          const changes:ReviseRequest={};
+          if (parts.length===2) {
+            if(body.origin!==undefined) changes.origin=location(body.origin);
+            if(body.destination!==undefined) changes.destination=location(body.destination);
+            if(body.cargo!==undefined) {
+              const cargo=object(body.cargo);
+              changes.cargo={description:cargo.description===undefined?undefined:text(cargo.description,'description'),
+                weightKg:cargo.weightKg===undefined?undefined:number(cargo.weightKg,'weightKg'),volumeM3:cargo.volumeM3===undefined?undefined:number(cargo.volumeM3,'volumeM3')};
+            }
+          } else if(parts[2]==='cargo-weight') changes.cargo={weightKg:number(body.weightKg,'weightKg')};
+          else if(parts[2]==='cargo-volume') changes.cargo={volumeM3:number(body.volumeM3,'volumeM3')};
+          else changes.timeWindow={startsAt:date(body.startsAt,'startsAt'),endsAt:date(body.endsAt,'endsAt')};
+          return {status:200,data:requestDto(await new ReviseRequestHandler(requests).execute(requestId,requesterId,changes))};
+        }
         if (parts.length === 2 && request.method === 'GET') return { status: 200, data: requestDto(owned) };
         if (parts.length === 3 && parts[2] === 'cargo-type' && request.method === 'PATCH') {
           const type = text(body.type, 'type') as CargoType;
