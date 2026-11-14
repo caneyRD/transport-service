@@ -88,3 +88,7 @@ Persistencia compatible con vehicles y driver_availability existentes. 58 prueba
 ### Programación y cambios antes del matching
 
 UC-TRA-52: `POST /transport-requests/scheduled` usa el mismo JSON de creación y exige ventana futura. UC-TRA-53 y UC-TRA-55: `PATCH /transport-requests/:id/pickup-window` o `/reschedule` con startsAt/endsAt ISO. UC-TRA-56: `PATCH /transport-requests/:id` admite cargo, origin y destination. UC-TRA-62 y UC-TRA-63: `PATCH /transport-requests/:id/cargo-weight` con weightKg y `/cargo-volume` con volumeM3. Todas las modificaciones requieren propietario y estado OPEN; conservan unidades y tipo de carga, incrementan versiones y escriben el evento TransportRequestRevised transaccionalmente. Ventanas inválidas/pasadas y cantidades no positivas se rechazan. 62 pruebas exitosas con PostgreSQL (14 noviembre 2026).
+
+### Historial y consultas previas a ofertar
+
+UC-TRA-16: `GET /trips/history?limit=25&offset=0` devuelve solo viajes del cliente autenticado, con paginación (máximo 100), fechas, estado y direcciones. UC-TRA-75: `GET /transport-requests/:id/compare-offers` ordena ofertas vigentes por moneda y precio (sin conversión entre monedas). UC-TRA-121/122/123: `GET /carrier/requests/:id/cargo`, `/route`, `/distance` requieren transportista habilitado y solicitud abierta a ofertas. Ruta y distancia son estimaciones geodésicas explícitas, no navegación por carreteras. Los datos proceden de solicitudes/ofertas/viajes PostgreSQL. 64 pruebas exitosas con PostgreSQL (14 noviembre 2026).

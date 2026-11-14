@@ -1,3 +1,4 @@
+import { PostgresTripHistoryRepository } from './trip-history.repository';
 import { PostgresFleetRepository } from './fleet.repository';
 import { CarrierRepository, CarrierRegistration } from '../../application/transport/register-carrier';
 import { randomUUID } from 'node:crypto';
@@ -25,6 +26,7 @@ export interface TransportRepositories {
   tracking: PostgresTrackingRepository;
   carriers: CarrierRepository;
   fleet: PostgresFleetRepository;
+  tripHistory: PostgresTripHistoryRepository;
 }
 
 export class PostgresCarrierRepository implements CarrierRepository {
@@ -231,7 +233,7 @@ export class PostgresTransportStore {
       await client.query("SET LOCAL lock_timeout = '5s'");
       const result=await action({requests:new PostgresTransportRequestRepository(client,events),
         offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
-        fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
+        tripHistory:new PostgresTripHistoryRepository(client),fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;
     } catch(error) {
       await client.query('ROLLBACK'); throw error;

@@ -1,3 +1,4 @@
+import { TransportQueries } from '../../application/transport/transport-queries';
 import { ReviseRequestHandler } from '../../application/transport/revise-request';
 import { ManageFleetHandler } from '../../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
@@ -117,6 +118,18 @@ integration('PostgreSQL transport integration', () => {
     expect(events.rows[0].count).toBe(5);
     await expect(store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,carrierId,{cargo:{weightKg:1}}))).rejects.toThrow('owner');
   });
+  it('compares persisted offers and restricts carrier cargo, route and distance queries',async()=>{
+    const {request,offer}=await offeredRequest();
+    await store.execute(async r=>{
+      const query=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory);
+      expect((await query.compare(request.props.id,requesterId)).map(o=>o.id)).toEqual([offer.id]);
+      expect((await query.carrierRequest(request.props.id,carrierId)).props.cargo.description).toBe('Integration gravel');
+      const route=await query.route(request.props.id,carrierId);expect(route.distance.value).toBeGreaterThan(0);expect(route.origin.address).toBe('Origin');
+    });
+    await expect(store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).carrierRequest(request.props.id,requesterId))).rejects.toThrow('enabled');
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
+    await expect(store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).route(request.props.id,carrierId))).rejects.toThrow('available');
+  });
   it('reloads persisted values and event versions, and replays idempotent create',async()=>{
     const input={...command(),idempotencyKey:randomUUID()};
     const request=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(input));
@@ -146,6 +159,9 @@ integration('PostgreSQL transport integration', () => {
     await client.query(`INSERT INTO transport.tracking_points(id,trip_id,source,source_point_id,latitude,longitude,recorded_at)
       VALUES ($1,$2,'integration',$3,18.4,-69.9,now())`,[randomUUID(),tripId,randomUUID()]);
     expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);
+    expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId))).toHaveLength(1);
+    expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(carrierId))).toEqual([]);
+
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
     const loaded=await store.execute(r=>r.requests.findById(request.props.id));
     expect(loaded?.currentAssignmentId).toBeUndefined(); expect(loaded?.currentStatus).toBe(TransportRequestStatus.CANCELLED);

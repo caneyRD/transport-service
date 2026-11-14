@@ -1,3 +1,4 @@
+import { TransportQueries, TripHistoryRepository } from '../application/transport/transport-queries';
 import { ReviseRequestHandler, ReviseRequest } from '../application/transport/revise-request';
 import { FleetRepository, ManageFleetHandler } from '../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../domain/transport/vehicle';
@@ -22,6 +23,7 @@ import { CargoType } from '../domain/transport/cargo';
 import { Authenticate, HttpError } from './auth';
 
 export interface Repositories {
+  tripHistory: TripHistoryRepository;
   fleet: FleetRepository;
   carriers: CarrierRepository;
   requests: TransportRequestRepository;
@@ -104,6 +106,11 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const carrier = await store.execute(({ carriers }) => new RegisterCarrierHandler(carriers).execute(requesterId));
         send(200, carrier); return;
       }
+      if (url.pathname === '/trips/history' && request.method === 'GET') {
+        const limit=url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 25;
+        const offset=url.searchParams.has('offset') ? Number(url.searchParams.get('offset')) : 0;
+        send(200,await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId,limit,offset))); return;
+      }
       const fleetParts = url.pathname.split('/').filter(Boolean);
       if (url.pathname === '/carriers/me/verification' && request.method === 'GET') {
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).verification(requesterId))); return;
@@ -112,6 +119,18 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const body=await readBody(request);
         if (typeof body.available !== 'boolean') throw new HttpError(400,'available must be boolean');
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).availability(requesterId,body.available as boolean,date(body.startsAt,'startsAt'),date(body.endsAt,'endsAt')))); return;
+      }
+      if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['cargo','route','distance'].includes(fleetParts[3]) && request.method==='GET') {
+        const data=await store.execute(async r=>{
+          const queries=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory);
+          if(fleetParts[3]==='cargo') {
+            const request=await queries.carrierRequest(fleetParts[2],requesterId);
+            return requestDto(request).cargo;
+          }
+          const route=await queries.route(fleetParts[2],requesterId);
+          return {origin:route.origin,destination:route.destination,distanceKm:route.distance.value,estimatedDurationMinutes:route.estimatedDurationMinutes,provider:'GEODESIC_ESTIMATE'};
+        });
+        send(200,data);return;
       }
       if (fleetParts[0] === 'vehicles' && ((fleetParts.length === 1 && request.method === 'POST') || (fleetParts.length === 2 && request.method === 'PUT'))) {
         const body=await readBody(request);
@@ -124,7 +143,7 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       const parts = url.pathname.split('/').filter(Boolean);
       if (parts[0] !== 'transport-requests') throw new HttpError(404, 'Route not found');
       const body = ['POST', 'PATCH'].includes(request.method ?? '') ? await readBody(request) : {};
-      const result = await store.execute(async ({ requests, offers, candidates, tracking }) => {
+      const result = await store.execute(async ({ requests, offers, candidates, tracking, fleet, tripHistory }) => {
         if ((parts.length === 1 || (parts.length === 2 && parts[1] === 'scheduled')) && request.method === 'POST') {
           const cargo = object(body.cargo), window = object(body.timeWindow);
           const key = request.headers['idempotency-key'];
@@ -181,6 +200,10 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         }
         if (parts.length === 3 && parts[2] === 'tracking' && request.method === 'GET') {
           return { status: 200, data: await tracking.findLiveByRequestId(requestId) };
+        }
+        if (parts.length===3 && parts[2]==='compare-offers' && request.method==='GET') {
+          const data=await new TransportQueries(requests,offers,fleet,tripHistory).compare(requestId,requesterId);
+          return {status:200,data:data.map(offerDto)};
         }
         if (parts.length === 3 && parts[2] === 'offers' && request.method === 'GET') {
           const data = await new ViewReceivedOffersHandler(requests, offers).execute({ requestId, requesterId });
