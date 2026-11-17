@@ -1,0 +1,78 @@
+name: Deploy transport to Hostinger
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Explicitly authorized target environment
+        type: choice
+        options: [production, qa]
+        required: true
+      image:
+        description: Full ghcr.io image@sha256 digest from Build container image
+        required: true
+        type: string
+      migrate:
+        description: Authorize database migrations with this deployment (backup required)
+        type: boolean
+        default: false
+      initialize:
+        description: Transport only - authorize initialization of a new EMPTY database
+        type: boolean
+        default: false
+      authorization:
+        description: 'Type deploy-transport-ENVIRONMENT to authorize this specific deployment'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: deploy-transport-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate request and configure SSH
+        env:
+          IMAGE: ${{ inputs.image }}
+          TARGET: ${{ inputs.environment }}
+          AUTHORIZATION: ${{ inputs.authorization }}
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TARGET" == production || "$TARGET" == qa ]]
+          [[ "$AUTHORIZATION" == "deploy-transport-$TARGET" ]]
+          [[ "$IMAGE" =~ ^ghcr\.io/caneyrd/transport-service@sha256:[0-9a-f]{64}$ ]]
+          [[ "$VPS_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+$ ]]
+          [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Update only transport
+        env:
+          IMAGE: ${{ inputs.image }}
+          TARGET: ${{ inputs.environment }}
+          MIGRATE: ${{ inputs.migrate }}
+          INITIALIZE: ${{ inputs.initialize }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=""
+          if [[ "$MIGRATE" == true ]]; then args="$args --migrate"; fi
+          if [[ "$INITIALIZE" == true ]]; then args="$args --initialize"; fi
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            "$VPS_USER@$VPS_HOST" \
+            "python3 /opt/baney/$TARGET/scripts/deploy.py --environment $TARGET --service transport --image $IMAGE --authorize deploy-transport-$TARGET$args"
+      - name: Remove runner SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
