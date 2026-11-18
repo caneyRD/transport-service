@@ -30,6 +30,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
+    permissions:
+      contents: read
+      packages: read
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -64,15 +67,13 @@ jobs:
           INITIALIZE: ${{ inputs.initialize }}
           VPS_HOST: ${{ vars.VPS_HOST }}
           VPS_USER: ${{ vars.VPS_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          args=""
-          if [[ "$MIGRATE" == true ]]; then args="$args --migrate"; fi
-          if [[ "$INITIALIZE" == true ]]; then args="$args --initialize"; fi
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+          printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
             "$VPS_USER@$VPS_HOST" \
-            "python3 /opt/baney/$TARGET/scripts/deploy.py --environment $TARGET --service transport --image $IMAGE --authorize deploy-transport-$TARGET$args"
+            "baney-deploy $TARGET transport $IMAGE $MIGRATE $INITIALIZE $GITHUB_ACTOR deploy-transport-$TARGET"
       - name: Remove runner SSH credentials
         if: always()
         run: rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
