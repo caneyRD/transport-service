@@ -249,6 +249,10 @@ export class PostgresTransportStore {
       await client.query('ROLLBACK'); throw error;
     } finally { client.release(); }
   }
-  async health():Promise<void> { await this.pool.query('SELECT 1 FROM baney.solicitud_transporte LIMIT 1'); }
+  async health():Promise<void> {
+    const version=await this.pool.query("SELECT version FROM baney.version_esquema WHERE version='002'");
+    if (version.rowCount !== 1) throw new Error('Shared BANEY schema version 002 is required');
+    await this.pool.query('SELECT 1 FROM baney.solicitud_transporte LIMIT 1');
+  }
   async close():Promise<void> { await this.pool.end(); }
 }

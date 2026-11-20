@@ -15,6 +15,7 @@ async function main(): Promise<void> {
   });
   pool.on('error', () => console.error('Idle database connection failed'));
   const store = new PostgresTransportStore(pool);
+  await store.health();
   const server = createTransportServer(store, jwtAuthenticator({
     publicKey: process.env.JWT_PUBLIC_KEY, secret: process.env.JWT_SECRET,
     issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE,

@@ -197,8 +197,8 @@ integration('PostgreSQL transport integration', () => {
     const assignment=(await client.query('SELECT * FROM baney.asignacion WHERE id=$1',[accepted.request.currentAssignmentId])).rows[0];
     expect(assignment.vehicle_id).toBe(vehicleId); expect(assignment.accepted_offer_id).toBe(counter.id);
     const tripId=randomUUID();
-    await client.query(`INSERT INTO baney.viaje(id,solicitud_id,asignacion_id,estado,iniciado_en)
-      VALUES ($1,$2,$3,'en_transito',now())`,[tripId,request.props.id,assignment.id]);
+    await client.query(`INSERT INTO baney.viaje(id,solicitud_id,asignacion_id,estado,iniciado_en,monto_acordado)
+      VALUES ($1,$2,$3,'en_transito',now(),1100)`,[tripId,request.props.id,assignment.id]);
     await client.query(`INSERT INTO baney.punto_rastreo(id,viaje_id,origen_actor,punto_origen_id,latitud,longitud,registrado_en)
       VALUES ($1,$2,'integration',$3,18.4,-69.9,now())`,[randomUUID(),tripId,randomUUID()]);
     expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);

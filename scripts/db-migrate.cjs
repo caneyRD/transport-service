@@ -7,6 +7,9 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, connectionTi
 (async () => {
   const client = await pool.connect();
   try {
+    if ((await client.query("SELECT to_regclass('baney.version_esquema') AS name")).rows[0].name) {
+      throw new Error('Shared BANEY migrations are managed in baney-infra; legacy migrations are forbidden.');
+    }
     await client.query('BEGIN');
     await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended('transport-service-migrations',0))");
