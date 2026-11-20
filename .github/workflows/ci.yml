@@ -31,6 +31,6 @@ jobs:
       - run: npm run build
       - name: Initialize isolated test database and apply migrations
         run: |
-          node scripts/db-initialize.cjs
-          node scripts/db-migrate.cjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/shared/baseline.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/shared/002_api_compat.sql
       - run: npm test

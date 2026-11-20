@@ -7,9 +7,9 @@ async function main() {
     connectionTimeoutMillis: 8000, query_timeout: 8000, max: 1 });
   try {
     const { rows } = await pool.query(`SELECT current_database() AS database,
-      to_regclass('transport.transport_requests') IS NOT NULL AS requests,
-      to_regclass('transport.transport_offers') IS NOT NULL AS offers,
-      to_regclass('transport.outbox_events') IS NOT NULL AS outbox`);
+      to_regclass('baney.solicitud_transporte') IS NOT NULL AS requests,
+      to_regclass('baney.oferta_transporte') IS NOT NULL AS offers,
+      to_regclass('baney.outbox') IS NOT NULL AS outbox`);
     if (!rows[0].requests || !rows[0].offers || !rows[0].outbox) {
       throw new Error('Transport schema is missing. See database setup instructions.');
     }

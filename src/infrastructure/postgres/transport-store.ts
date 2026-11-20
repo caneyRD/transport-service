@@ -1,3 +1,4 @@
+import { encode, canonicalRows } from './canonical-values';
 import { PostgresTripOperationsRepository } from './trip-operations.repository';
 import { PostgresTripHistoryRepository } from './trip-history.repository';
 import { PostgresFleetRepository } from './fleet.repository';
@@ -34,11 +35,11 @@ export interface TransportRepositories {
 export class PostgresCarrierRepository implements CarrierRepository {
   constructor(private readonly client: PoolClient) {}
   async register(userId: string): Promise<CarrierRegistration> {
-    const result = await this.client.query(`INSERT INTO transport.driver_profiles(id,user_id,status)
-      VALUES ($1,$2,'PENDING') ON CONFLICT (user_id) DO UPDATE
-      SET user_id=EXCLUDED.user_id
-      WHERE transport.driver_profiles.deleted_at IS NULL
-      RETURNING id,user_id AS "userId",status`, [randomUUID(),userId]);
+    const result = await this.client.query(`INSERT INTO baney.perfil_transportista(id,usuario_uid,dueno_flota_uid,estado)
+      VALUES ($1,$2,$2,'pendiente') ON CONFLICT (usuario_uid) DO UPDATE
+      SET usuario_uid=EXCLUDED.usuario_uid
+      WHERE baney.perfil_transportista.eliminado_en IS NULL
+      RETURNING id,usuario_uid AS "userId",estado`, [randomUUID(),userId]);
     if (!result.rows.length) throw new DomainError('Carrier already registered and archived; contact support');
     return result.rows[0] as CarrierRegistration;
   }
@@ -47,11 +48,11 @@ export class PostgresCarrierRepository implements CarrierRepository {
 export class PostgresTrackingRepository {
   constructor(private readonly client: PoolClient) {}
   async findLiveByRequestId(requestId: string): Promise<unknown[]> {
-    const result = await this.client.query(`SELECT p.id, p.trip_id AS "tripId", p.latitude, p.longitude,
-        p.recorded_at AS "recordedAt", p.source
-      FROM transport.tracking_points p JOIN transport.trips t ON t.id=p.trip_id
-      WHERE t.request_id=$1 AND t.status='IN_PROGRESS' AND t.deleted_at IS NULL
-      ORDER BY p.recorded_at DESC, p.id DESC`, [requestId]);
+    const result = await this.client.query(`SELECT p.id, p.viaje_id AS "tripId", p.latitud, p.longitud,
+        p.registrado_en AS "recordedAt", p.origen_actor
+      FROM baney.punto_rastreo p JOIN baney.viaje t ON t.id=p.viaje_id
+      WHERE t.solicitud_id=$1 AND t.estado='en_transito' AND t.eliminado_en IS NULL
+      ORDER BY p.registrado_en DESC, p.id DESC`, [requestId]);
     return result.rows;
   }
 }
@@ -60,14 +61,14 @@ export class PostgresTransportOutbox implements TransportDomainOutbox {
   constructor(private readonly client: PoolClient) {}
   async append(events: readonly DomainEvent[]): Promise<void> {
     for (const e of events) {
-      await this.client.query(`INSERT INTO transport.outbox_events
-        (event_id, aggregate_type, aggregate_id, event_type, aggregate_version, correlation_id, schema_version, payload, occurred_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      await this.client.query(`INSERT INTO baney.outbox
+        (id, modulo, agregado_tipo, agregado_uid, tipo_evento, agregado_version, correlacion_id, version_esquema, carga, creado_en)
+        VALUES ($1,'transporte',$2,$3,$4,$5,$6,$7,$8,$9)`,
       [e.eventId,e.aggregateType,e.aggregateId,e.type,e.version,e.correlationId,e.schemaVersion,JSON.stringify(e.payload),e.occurredAt]);
     }
   }
   async pending(): Promise<DomainEvent[]> {
-    const result = await this.client.query('SELECT * FROM transport.outbox_events WHERE published_at IS NULL ORDER BY occurred_at, aggregate_version');
+    const result = await this.client.query("SELECT * FROM baney.outbox WHERE modulo='transporte' AND publicado_en IS NULL ORDER BY creado_en, agregado_version");
     return result.rows.map(r => ({ eventId:r.event_id, aggregateType:r.aggregate_type, aggregateId:r.aggregate_id,
       type:r.event_type, version:r.aggregate_version, correlationId:r.correlation_id, schemaVersion:r.schema_version,
       payload:r.payload, occurredAt:new Date(r.occurred_at) }));
@@ -104,72 +105,72 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
     return request;
   }
   async findById(id: string): Promise<TransportRequest | undefined> {
-    const result = await this.client.query(`SELECT r.*, c.description,c.cargo_type,c.weight_kg,c.volume_m3
-      FROM transport.transport_requests r JOIN transport.transport_cargos c ON c.request_id=r.id
-      WHERE r.id=$1 AND r.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE OF r`,[id]);
+    const result = await this.client.query(`SELECT r.*, c.descripcion,c.tipo_carga,c.peso_kg,c.volumen_m3
+      FROM baney.solicitud_transporte r JOIN baney.carga c ON c.solicitud_id=r.id
+      WHERE r.id=$1 AND r.eliminado_en IS NULL AND c.eliminado_en IS NULL FOR UPDATE OF r`,[id]);
     return result.rows[0] ? this.hydrate(result.rows[0]) : undefined;
   }
   async findByIdempotencyKey(requesterId: string, key: string): Promise<TransportRequest | undefined> {
     // Serialize concurrent first-time submissions too, before a request row exists.
     await this.client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[JSON.stringify([requesterId,key])]);
-    const result = await this.client.query(`SELECT id FROM transport.transport_requests
-      WHERE requester_id=$1 AND idempotency_key=$2 AND deleted_at IS NULL`,[requesterId,key]);
+    const result = await this.client.query(`SELECT id FROM baney.solicitud_transporte
+      WHERE solicitante_uid=$1 AND idempotency_key=$2 AND eliminado_en IS NULL`,[requesterId,key]);
     return result.rows[0] ? this.findById(result.rows[0].id) : undefined;
   }
   async save(request: TransportRequest, expectedRowVersion?: number, key?: string): Promise<void> {
     const p=request.props;
     const expected=expectedRowVersion ?? this.versions.get(request);
     if (request.currentStatus === TransportRequestStatus.ASSIGNED && request.currentAssignmentId) {
-      const existing = await this.client.query('SELECT id FROM transport.assignments WHERE id=$1 AND request_id=$2',
+      const existing = await this.client.query('SELECT id FROM baney.asignacion WHERE id=$1 AND solicitud_id=$2',
         [request.currentAssignmentId,p.id]);
       if (!existing.rows[0]) {
-        const eligible = await this.client.query(`SELECT o.id AS offer_id, d.id AS driver_id, v.id AS vehicle_id
-          FROM transport.transport_offers o JOIN transport.driver_profiles d ON d.user_id=o.carrier_id
-          JOIN transport.vehicles v ON v.id=o.vehicle_id AND v.owner_id=o.carrier_id
-          WHERE o.request_id=$1 AND o.status='ACCEPTED' AND o.deleted_at IS NULL
-          AND d.status='ENABLED' AND d.deleted_at IS NULL AND v.status='ENABLED' AND v.deleted_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM transport.driver_availability a WHERE a.driver_profile_id=d.id AND a.starts_at<=now() AND a.ends_at>now() AND a.status='UNAVAILABLE')
+        const eligible = await this.client.query(`SELECT o.id AS offer_id, d.id AS driver_id, v.id AS vehiculo_id
+          FROM baney.oferta_transporte o JOIN baney.perfil_transportista d ON d.usuario_uid=o.transportista_uid
+          JOIN baney.vehiculo v ON v.id=o.vehiculo_id AND v.dueno_uid=o.transportista_uid
+          WHERE o.solicitud_id=$1 AND o.estado='aceptada' AND o.eliminado_en IS NULL
+          AND d.estado='habilitado' AND d.eliminado_en IS NULL AND v.estado='habilitado' AND v.eliminado_en IS NULL
+          AND NOT EXISTS (SELECT 1 FROM baney.disponibilidad_transportista a WHERE a.perfil_transportista_id=d.id AND a.desde<=now() AND a.hasta>now() AND a.estado='no_disponible')
           FOR UPDATE OF d,v`,[p.id]);
         const candidate=eligible.rows[0];
         if (!candidate) throw new DomainError('Assignment requires an accepted offer with an enabled carrier and vehicle');
-        const busy=await this.client.query(`SELECT id FROM transport.assignments WHERE status='ACTIVE' AND deleted_at IS NULL
-          AND (driver_profile_id=$1 OR vehicle_id=$2)`,[candidate.driver_id,candidate.vehicle_id]);
+        const busy=await this.client.query(`SELECT id FROM baney.asignacion WHERE estado='activa' AND eliminado_en IS NULL
+          AND (perfil_transportista_id=$1 OR vehiculo_id=$2)`,[candidate.driver_id,candidate.vehicle_id]);
         if (busy.rows.length) throw new DomainError('Carrier or vehicle already has an active assignment');
-        await this.client.query(`INSERT INTO transport.assignments
-          (id,request_id,driver_profile_id,vehicle_id,status,accepted_offer_id) VALUES ($1,$2,$3,$4,'ACTIVE',$5)`,
+        await this.client.query(`INSERT INTO baney.asignacion
+          (id,solicitud_id,perfil_transportista_id,vehiculo_id,estado,oferta_aceptada_id) VALUES ($1,$2,$3,$4,'activa',$5)`,
         [request.currentAssignmentId,p.id,candidate.driver_id,candidate.vehicle_id,candidate.offer_id]);
       }
     }
     if (request.currentStatus === TransportRequestStatus.CANCELLED) {
-      await this.client.query(`UPDATE transport.trips SET status='CANCELLED',updated_at=now()
-        WHERE request_id=$1 AND status IN ('PLANNED','IN_PROGRESS') AND deleted_at IS NULL`,[p.id]);
+      await this.client.query(`UPDATE baney.viaje SET estado='cancelado',cancelado_en=now(),actualizado_en=now()
+        WHERE solicitud_id=$1 AND estado IN ('programado','en_transito') AND eliminado_en IS NULL`,[p.id]);
 
-      await this.client.query(`UPDATE transport.assignments SET status='RELEASED',released_at=now()
-        WHERE request_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`,[p.id]);
+      await this.client.query(`UPDATE baney.asignacion SET estado='liberada',liberada_en=now()
+        WHERE solicitud_id=$1 AND estado='activa' AND eliminado_en IS NULL`,[p.id]);
     }
     if (expected === undefined) {
-      await this.client.query(`INSERT INTO transport.transport_requests
-        (id,requester_id,idempotency_key,status,origin_address,origin_latitude,origin_longitude,
-         destination_address,destination_latitude,destination_longitude,window_starts_at,window_ends_at,
-         active_assignment_id,aggregate_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [p.id,p.requesterId,key ?? null,request.currentStatus,p.origin.address,p.origin.latitude,p.origin.longitude,
+      await this.client.query(`INSERT INTO baney.solicitud_transporte
+        (id,solicitante_uid,idempotency_key,estado,origen_direccion,origen_latitud,origen_longitud,
+         destino_direccion,destino_latitud,destino_longitud,ventana_recogida_desde,ventana_recogida_hasta,
+         asignacion_activa_id,agregado_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [p.id,p.requesterId,key ?? null,encode(request.currentStatus),p.origin.address,p.origin.latitude,p.origin.longitude,
         p.destination.address,p.destination.latitude,p.destination.longitude,p.timeWindow.startsAt,p.timeWindow.endsAt,
         request.currentAssignmentId ?? null,request.currentVersion]);
       this.versions.set(request,1);
     } else {
-      const result=await this.client.query(`UPDATE transport.transport_requests SET status=$2, active_assignment_id=$3,
-        aggregate_version=$4,row_version=row_version+1,updated_at=now(),
-        origin_address=$6,origin_latitude=$7,origin_longitude=$8,destination_address=$9,destination_latitude=$10,destination_longitude=$11,window_starts_at=$12,window_ends_at=$13,
-        cancelled_at=CASE WHEN $2::transport.transport_request_status='CANCELLED' THEN COALESCE(cancelled_at,now()) ELSE cancelled_at END
-        WHERE id=$1 AND row_version=$5 AND deleted_at IS NULL RETURNING row_version`,
-      [p.id,request.currentStatus,request.currentAssignmentId ?? null,request.currentVersion,expected,p.origin.address,p.origin.latitude,p.origin.longitude,p.destination.address,p.destination.latitude,p.destination.longitude,p.timeWindow.startsAt,p.timeWindow.endsAt]);
+      const result=await this.client.query(`UPDATE baney.solicitud_transporte SET estado=$2, asignacion_activa_id=$3,
+        agregado_version=$4,version_fila=version_fila+1,actualizado_en=now(),
+        origen_direccion=$6,origen_latitud=$7,origen_longitud=$8,destino_direccion=$9,destino_latitud=$10,destino_longitud=$11,ventana_recogida_desde=$12,ventana_recogida_hasta=$13,
+        cancelado_en=CASE WHEN $2::text='cancelada' THEN COALESCE(cancelado_en,now()) ELSE cancelado_en END
+        WHERE id=$1 AND version_fila=$5 AND eliminado_en IS NULL RETURNING version_fila`,
+      [p.id,encode(request.currentStatus),request.currentAssignmentId ?? null,request.currentVersion,expected,p.origin.address,p.origin.latitude,p.origin.longitude,p.destination.address,p.destination.latitude,p.destination.longitude,p.timeWindow.startsAt,p.timeWindow.endsAt]);
       if (!result.rows[0]) throw new DomainError(`Transport request ${p.id} changed concurrently`);
       this.versions.set(request,result.rows[0].row_version);
     }
-    await this.client.query(`INSERT INTO transport.transport_cargos (id,request_id,description,cargo_type,weight_kg,volume_m3)
-      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (request_id) DO UPDATE SET description=EXCLUDED.description,
-      cargo_type=EXCLUDED.cargo_type,weight_kg=EXCLUDED.weight_kg,volume_m3=EXCLUDED.volume_m3,updated_at=now()`,
-    [randomUUID(),p.id,p.cargo.description,p.cargo.cargoType ?? null,p.cargo.weight?.value ?? null,p.cargo.volume?.value ?? null]);
+    await this.client.query(`INSERT INTO baney.carga (id,solicitud_id,descripcion,tipo_carga,peso_kg,volumen_m3)
+      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (solicitud_id) DO UPDATE SET descripcion=EXCLUDED.descripcion,
+      tipo_carga=EXCLUDED.tipo_carga,peso_kg=EXCLUDED.peso_kg,volumen_m3=EXCLUDED.volumen_m3,actualizado_en=now()`,
+    [randomUUID(),p.id,p.cargo.description,encode(p.cargo.cargoType) ?? null,p.cargo.weight?.value ?? null,p.cargo.volume?.value ?? null]);
     await this.events.save(request);
   }
 }
@@ -185,26 +186,28 @@ export class PostgresTransportOfferRepository implements TransportOfferRepositor
     this.versions.set(offer,r.row_version); return offer;
   }
   async findById(id:string):Promise<TransportOffer | undefined> {
-    const result=await this.client.query('SELECT * FROM transport.transport_offers WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[id]);
+    const result=await this.client.query('SELECT * FROM baney.oferta_transporte WHERE id=$1 AND eliminado_en IS NULL FOR UPDATE',[id]);
     return result.rows[0] ? this.hydrate(result.rows[0]) : undefined;
   }
   async findByRequestId(id:string):Promise<TransportOffer[]> {
-    const result=await this.client.query('SELECT * FROM transport.transport_offers WHERE request_id=$1 AND deleted_at IS NULL ORDER BY created_at,id FOR UPDATE',[id]);
+    const result=await this.client.query('SELECT * FROM baney.oferta_transporte WHERE solicitud_id=$1 AND eliminado_en IS NULL ORDER BY creado_en,id FOR UPDATE',[id]);
     return result.rows.map(r=>this.hydrate(r));
   }
   async save(offer:TransportOffer):Promise<void> {
     const version=this.versions.get(offer);
     if(version===undefined) {
-      await this.client.query(`INSERT INTO transport.transport_offers
-        (id,request_id,carrier_id,vehicle_id,amount,currency,status,valid_until,parent_offer_id,proposed_by,round,aggregate_version)
+      await this.client.query(`INSERT INTO baney.oferta_transporte
+        (id,solicitud_id,transportista_uid,vehiculo_id,monto,moneda,estado,vigente_hasta,oferta_padre_id,propuesta_por,ronda,agregado_version)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [offer.id,offer.requestId,offer.carrierId,offer.vehicleId ?? null,offer.price.amount,offer.price.currency,offer.currentStatus,
-        offer.validUntil,offer.parentOfferId ?? null,offer.proposedBy ?? null,offer.round,offer.currentVersion]);
+      [offer.id,offer.requestId,offer.carrierId,offer.vehicleId ?? null,offer.price.amount,offer.price.currency,encode(offer.currentStatus),
+        offer.validUntil,offer.parentOfferId ?? null,encode(offer.proposedBy) ?? null,offer.round,offer.currentVersion]);
       this.versions.set(offer,1);
     } else {
-      const result=await this.client.query(`UPDATE transport.transport_offers SET status=$2,aggregate_version=$3,
-        row_version=row_version+1,updated_at=now() WHERE id=$1 AND row_version=$4 AND deleted_at IS NULL RETURNING row_version`,
-      [offer.id,offer.currentStatus,offer.currentVersion,version]);
+      const result=await this.client.query(`UPDATE baney.oferta_transporte SET estado=$2,agregado_version=$3,
+        reemplazada_por_contraoferta=$5,
+        version_fila=version_fila+1,actualizado_en=now() WHERE id=$1 AND version_fila=$4 AND eliminado_en IS NULL RETURNING version_fila`,
+      [offer.id,offer.currentStatus === TransportOfferStatus.COUNTERED ? 'retirada' : encode(offer.currentStatus),
+        offer.currentVersion,version,offer.currentStatus === TransportOfferStatus.COUNTERED]);
       if(!result.rows[0]) throw new DomainError(`Transport offer ${offer.id} changed concurrently`);
       this.versions.set(offer,result.rows[0].row_version);
     }
@@ -215,12 +218,12 @@ export class PostgresTransportOfferRepository implements TransportOfferRepositor
 export class PostgresMatchingCandidateRepository implements MatchingCandidateRepository {
   constructor(private readonly client:PoolClient) {}
   async findByRequestId(id:string):Promise<MatchingCandidate[]> {
-    const result=await this.client.query(`SELECT c.*,d.user_id AS carrier_id FROM transport.matching_candidates c
-      JOIN transport.driver_profiles d ON d.id=c.driver_profile_id JOIN transport.vehicles v ON v.id=c.vehicle_id
-      WHERE c.request_id=$1 AND (c.expires_at IS NULL OR c.expires_at>now())
-      AND d.status='ENABLED' AND d.deleted_at IS NULL AND v.status='ENABLED' AND v.deleted_at IS NULL
-      AND NOT EXISTS (SELECT 1 FROM transport.driver_availability a WHERE a.driver_profile_id=d.id AND a.starts_at<=now() AND a.ends_at>now() AND a.status='UNAVAILABLE')
-      ORDER BY c.distance_km ASC NULLS LAST,c.score DESC,c.id`,[id]);
+    const result=await this.client.query(`SELECT c.*,d.usuario_uid AS transportista_uid FROM baney.candidato_matching c
+      JOIN baney.perfil_transportista d ON d.id=c.perfil_transportista_id JOIN baney.vehiculo v ON v.id=c.vehiculo_id
+      WHERE c.solicitud_id=$1 AND (c.expira_en IS NULL OR c.expira_en>now())
+      AND d.estado='habilitado' AND d.eliminado_en IS NULL AND v.estado='habilitado' AND v.eliminado_en IS NULL
+      AND NOT EXISTS (SELECT 1 FROM baney.disponibilidad_transportista a WHERE a.perfil_transportista_id=d.id AND a.desde<=now() AND a.hasta>now() AND a.estado='no_disponible')
+      ORDER BY c.distancia_km ASC NULLS LAST,c.puntuacion DESC,c.id`,[id]);
     return result.rows.map(r=>MatchingCandidate.create({id:r.id,requestId:r.request_id,carrierId:r.carrier_id,
       vehicleId:r.vehicle_id,score:Number(r.score),distanceKm:r.distance_km===null ? undefined : Number(r.distance_km)}));
   }
@@ -230,11 +233,12 @@ export class PostgresMatchingCandidateRepository implements MatchingCandidateRep
 export class PostgresTransportStore {
   constructor(private readonly pool:Pool) {}
   async execute<T>(action:(repositories:TransportRepositories)=>Promise<T>):Promise<T> {
-    const client=await this.pool.connect();
+    const client=canonicalRows(await this.pool.connect());
     const outbox=new PostgresTransportOutbox(client);
     const events=new TransactionEvents(outbox);
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL search_path TO baney, public');
       await client.query("SET LOCAL lock_timeout = '5s'");
       const requests=new PostgresTransportRequestRepository(client,events);
       const result=await action({requests,operations:new PostgresTripOperationsRepository(client,requests,outbox),
@@ -245,6 +249,6 @@ export class PostgresTransportStore {
       await client.query('ROLLBACK'); throw error;
     } finally { client.release(); }
   }
-  async health():Promise<void> { await this.pool.query('SELECT 1 FROM transport.transport_requests LIMIT 1'); }
+  async health():Promise<void> { await this.pool.query('SELECT 1 FROM baney.solicitud_transporte LIMIT 1'); }
   async close():Promise<void> { await this.pool.end(); }
 }

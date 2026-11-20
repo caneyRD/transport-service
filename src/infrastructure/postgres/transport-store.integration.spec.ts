@@ -7,6 +7,7 @@ import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/veh
 import { randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PostgresTransportStore } from './transport-store';
+import { canonicalRows } from './canonical-values';
 import { CreateTransportRequestHandler } from '../../application/transport/create-transport-request';
 import { SelectCargoTypeHandler } from '../../application/transport/select-cargo-type';
 import { CounterOfferHandler } from '../../application/transport/counter-offer';
@@ -20,18 +21,21 @@ import { TransportRequestStatus } from '../../domain/transport/transport-request
 // Explicit opt-in. All fixtures and operations remain in one outer transaction,
 // rolled back even after a failed assertion. No cleanup DELETE touches shared data.
 const integration = process.env.TEST_DATABASE_URL ? describe : describe.skip;
+jest.setTimeout(30000);
 integration('PostgreSQL transport integration', () => {
   let pool: Pool;
   let client: PoolClient;
   let store: PostgresTransportStore;
-  const requesterId = `integration-${randomUUID()}`;
-  const carrierId = `integration-${randomUUID()}`;
+  const requesterId = randomUUID();
+  const carrierId = randomUUID();
   const driverId = randomUUID();
   const vehicleId = randomUUID();
   beforeAll(async () => {
     pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, connectionTimeoutMillis: 10000 });
-    client = await pool.connect();
+    client = canonicalRows(await pool.connect());
     await client.query('BEGIN');
+    await client.query('SET LOCAL search_path TO baney, public');
+    await client.query(`INSERT INTO baney.usuario(id,email) VALUES($1,$2),($3,$4)`,[carrierId,`${carrierId}@integration.test`,requesterId,`${requesterId}@integration.test`]);
     const adapter = {
       query: async (sql: string, values?: unknown[]) => {
         if (sql === 'BEGIN') return client.query('SAVEPOINT test_unit_of_work');
@@ -46,16 +50,10 @@ integration('PostgreSQL transport integration', () => {
       release: () => undefined,
     };
     store = new PostgresTransportStore({ connect: async () => adapter } as unknown as Pool);
-    // The standalone service schema intentionally has no cross-service FKs.
-    // Shared legacy databases may still need the local identity projection.
-    if ((await client.query("SELECT to_regclass('identity.users') AS name")).rows[0].name) {
-      await client.query(`INSERT INTO identity.users(id,email,status) VALUES
-        ($1,$2,'ACTIVE'),($3,$4,'ACTIVE')`, [carrierId, `${carrierId}@integration.test`, requesterId, `${requesterId}@integration.test`]);
-    }
-    await client.query(`INSERT INTO transport.driver_profiles(id,user_id,status) VALUES ($1,$2,'ENABLED')`,[driverId,carrierId]);
-    await client.query(`INSERT INTO transport.vehicles
-      (id,owner_id,registration_number,registration_number_normalized,body_type,capacity_value,capacity_unit,capacity_kg,status)
-      VALUES ($1,$2,$3,$3,'DUMP_TRUCK',20,'M3',25000,'ENABLED')`,[vehicleId,carrierId,randomUUID().replace(/-/g,'').toUpperCase()]);
+    await client.query(`INSERT INTO baney.perfil_transportista(id,usuario_uid,dueno_flota_uid,estado,induccion_completada_en) VALUES ($1,$2,$2,'habilitado',now())`,[driverId,carrierId]);
+    await client.query(`INSERT INTO baney.vehiculo
+      (id,dueno_uid,placa,placa_normalizada,tipo_carroceria,capacidad,unidad_capacidad,capacidad_kg,estado)
+      VALUES ($1,$2,$3,$3,'volteo',20,'m3',25000,'habilitado')`,[vehicleId,carrierId,randomUUID().replace(/-/g,'').toUpperCase()]);
   },30000);
   afterAll(async () => {
     if (client) { await client.query('ROLLBACK'); client.release(); }
@@ -83,9 +81,9 @@ integration('PostgreSQL transport integration', () => {
     const approved = await store.execute(r => r.carriers.register(carrierId));
     expect(approved.id).toBe(driverId);
     expect(approved.status).toBe('ENABLED');
-    await client.query('UPDATE transport.driver_profiles SET deleted_at=now() WHERE id=$1',[first.id]);
+    await client.query('UPDATE baney.perfil_transportista SET eliminado_en=now() WHERE id=$1',[first.id]);
     await expect(store.execute(r => r.carriers.register(requesterId))).rejects.toThrow('archived');
-    await client.query('UPDATE transport.driver_profiles SET deleted_at=NULL WHERE id=$1',[first.id]);
+    await client.query('UPDATE baney.perfil_transportista SET eliminado_en=NULL WHERE id=$1',[first.id]);
   });
   it('reads verification, registers and edits owned vehicles without retaining approval',async()=>{
     expect((await store.execute(r=>new ManageFleetHandler(r.fleet).verification(carrierId))).status).toBe('ENABLED');
@@ -93,7 +91,7 @@ integration('PostgreSQL transport integration', () => {
     const vehicle=await store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,input)) as {id:string;status:string};
     expect(vehicle.status).toBe('PENDING');
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(requesterId,input,vehicle.id))).rejects.toThrow('not found');
-    await client.query("UPDATE transport.vehicles SET status='ENABLED' WHERE id=$1",[vehicle.id]);
+    await client.query("UPDATE baney.vehiculo SET estado='habilitado' WHERE id=$1",[vehicle.id]);
     const edited=await store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,{...input,capacityKg:11000},vehicle.id)) as {status:string;capacity_kg:string};
     expect(edited.status).toBe('PENDING'); expect(Number(edited.capacity_kg)).toBe(11000);
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,input))).rejects.toMatchObject({code:'23505'});
@@ -102,7 +100,7 @@ integration('PostgreSQL transport integration', () => {
     const start=new Date(Date.now()-1000),end=new Date(Date.now()+3600000);
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,start,end));
-    const rows=await client.query('SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1',[driverId]);
+    const rows=await client.query('SELECT estado FROM baney.disponibilidad_transportista WHERE perfil_transportista_id=$1',[driverId]);
     expect(rows.rows).toEqual([{status:'UNAVAILABLE'}]);
     expect((await store.execute(r=>r.fleet.verification(carrierId)))?.status).toBe('ENABLED');
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
@@ -112,10 +110,10 @@ integration('PostgreSQL transport integration', () => {
     const now=Date.now();
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(now-3600000),new Date(now+3600000)));
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(now+1800000),new Date(now+2700000)));
-    const rows=await client.query("SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1 AND starts_at<=$2 AND ends_at>$2",[driverId,new Date(now)]);
+    const rows=await client.query("SELECT estado FROM baney.disponibilidad_transportista WHERE perfil_transportista_id=$1 AND desde<=$2 AND hasta>$2",[driverId,new Date(now)]);
     expect(rows.rows).toEqual([{status:'UNAVAILABLE'}]);
     for(const [instant,status] of [[now+2200000,'AVAILABLE'],[now+3000000,'UNAVAILABLE']] as const) {
-      const fragment=await client.query('SELECT status FROM transport.driver_availability WHERE driver_profile_id=$1 AND starts_at<=$2 AND ends_at>$2',[driverId,new Date(instant)]);
+      const fragment=await client.query('SELECT estado FROM baney.disponibilidad_transportista WHERE perfil_transportista_id=$1 AND desde<=$2 AND hasta>$2',[driverId,new Date(instant)]);
       expect(fragment.rows).toEqual([{status}]);
     }
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
@@ -132,7 +130,7 @@ integration('PostgreSQL transport integration', () => {
     expect(loaded.props.timeWindow.startsAt.toISOString()).toBe('2040-01-02T00:00:00.000Z');
     expect(loaded.props.cargo.weight?.value).toBe(2200);expect(loaded.props.cargo.volume?.value).toBe(4);
     expect(loaded.props.origin.address).toBe('Revised');expect(loaded.props.cargo.description).toBe('New load');
-    const events=await client.query("SELECT count(*)::int AS count FROM transport.outbox_events WHERE aggregate_id=$1 AND event_type='TransportRequestRevised'",[request.props.id]);
+    const events=await client.query("SELECT count(*)::int AS count FROM baney.outbox WHERE agregado_uid=$1 AND tipo_evento='TransportRequestRevised'",[request.props.id]);
     expect(events.rows[0].count).toBe(5);
     await expect(store.execute(r=>new ReviseRequestHandler(r.requests).execute(request.props.id,carrierId,{cargo:{weightKg:1}}))).rejects.toThrow('owner');
   });
@@ -167,8 +165,8 @@ integration('PostgreSQL transport integration', () => {
       const incident=await store.execute(r=>new TripOperationsHandler(r.operations).incident(trip.id,carrierId,type,'Test incident')) as {type:string};expect(incident.type).toBe(type);
     }
     await expect(store.execute(async r=>{await new TripOperationsHandler(r.operations).incident(trip.id,carrierId,TransportExceptionType.OTHER,'Rollback');throw new Error('Injected');})).rejects.toThrow('Injected');
-    expect((await client.query('SELECT count(*)::int AS count FROM transport.transport_exceptions WHERE trip_id=$1',[trip.id])).rows[0].count).toBe(4);
-    expect((await client.query("SELECT aggregate_version FROM transport.outbox_events WHERE aggregate_type='Trip' AND aggregate_id=$1 ORDER BY aggregate_version",[trip.id])).rows.map(r=>r.aggregate_version)).toEqual([1,2,3,4,5,6]);
+    expect((await client.query('SELECT count(*)::int AS count FROM baney.incidente WHERE viaje_id=$1',[trip.id])).rows[0].count).toBe(4);
+    expect((await client.query("SELECT agregado_version FROM baney.outbox WHERE agregado_tipo='Trip' AND agregado_uid=$1 ORDER BY agregado_version",[trip.id])).rows.map(r=>r.aggregate_version)).toEqual([1,2,3,4,5,6]);
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(),new Date(Date.now()+3600000)))).rejects.toThrow('active assignment');
     const vehicle={registrationNumber:'TEST',bodyType:VehicleBodyType.DUMP_TRUCK,capacityValue:20,capacityUnit:VehicleCapacityUnit.M3,capacityKg:25000};
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).vehicle(carrierId,vehicle,vehicleId))).rejects.toThrow('active assignment');
@@ -186,7 +184,7 @@ integration('PostgreSQL transport integration', () => {
     expect(loaded?.props.cargo.weight?.value).toBe(1200);
     expect(loaded?.currentStatus).toBe(TransportRequestStatus.OPEN);
     expect(loaded?.peekDomainEvents()).toEqual([]);
-    const events=await client.query('SELECT aggregate_version FROM transport.outbox_events WHERE aggregate_id=$1 ORDER BY aggregate_version',[request.props.id]);
+    const events=await client.query('SELECT agregado_version FROM baney.outbox WHERE agregado_uid=$1 ORDER BY agregado_version',[request.props.id]);
     expect(events.rows.map(r=>r.aggregate_version)).toEqual([1,2]);
   });
   it('persists a counteroffer and original offer together, then assigns and releases real resources',async()=>{
@@ -196,12 +194,12 @@ integration('PostgreSQL transport integration', () => {
     expect((await store.execute(r=>r.offers.findById(offer.id)))?.currentStatus).toBe(TransportOfferStatus.COUNTERED);
     expect(counter.parentOfferId).toBe(offer.id);
     const accepted=await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:counter.id}));
-    const assignment=(await client.query('SELECT * FROM transport.assignments WHERE id=$1',[accepted.request.currentAssignmentId])).rows[0];
+    const assignment=(await client.query('SELECT * FROM baney.asignacion WHERE id=$1',[accepted.request.currentAssignmentId])).rows[0];
     expect(assignment.vehicle_id).toBe(vehicleId); expect(assignment.accepted_offer_id).toBe(counter.id);
     const tripId=randomUUID();
-    await client.query(`INSERT INTO transport.trips(id,request_id,assignment_id,status,started_at)
-      VALUES ($1,$2,$3,'IN_PROGRESS',now())`,[tripId,request.props.id,assignment.id]);
-    await client.query(`INSERT INTO transport.tracking_points(id,trip_id,source,source_point_id,latitude,longitude,recorded_at)
+    await client.query(`INSERT INTO baney.viaje(id,solicitud_id,asignacion_id,estado,iniciado_en)
+      VALUES ($1,$2,$3,'en_transito',now())`,[tripId,request.props.id,assignment.id]);
+    await client.query(`INSERT INTO baney.punto_rastreo(id,viaje_id,origen_actor,punto_origen_id,latitud,longitud,registrado_en)
       VALUES ($1,$2,'integration',$3,18.4,-69.9,now())`,[randomUUID(),tripId,randomUUID()]);
     expect(await store.execute(r=>r.tracking.findLiveByRequestId(request.props.id))).toHaveLength(1);
     expect(await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId))).toEqual(expect.arrayContaining([expect.objectContaining({id:tripId,requestId:request.props.id})]));
@@ -210,19 +208,19 @@ integration('PostgreSQL transport integration', () => {
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
     const loaded=await store.execute(r=>r.requests.findById(request.props.id));
     expect(loaded?.currentAssignmentId).toBeUndefined(); expect(loaded?.currentStatus).toBe(TransportRequestStatus.CANCELLED);
-    expect((await client.query('SELECT status FROM transport.assignments WHERE id=$1',[assignment.id])).rows[0].status).toBe('RELEASED');
+    expect((await client.query('SELECT estado FROM baney.asignacion WHERE id=$1',[assignment.id])).rows[0].status).toBe('RELEASED');
   });
   it('rolls back offer, request and outbox when a unit of work fails',async()=>{
     const {request,offer}=await offeredRequest();
-    const before=await client.query('SELECT count(*)::int AS count FROM transport.outbox_events WHERE correlation_id=$1',[request.props.id]);
+    const before=await client.query('SELECT count(*)::int AS count FROM baney.outbox WHERE correlacion_id=$1',[request.props.id]);
     await expect(store.execute(async r=>{
       await new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:offer.id});
       throw new Error('Injected failure after all writes');
     })).rejects.toThrow('Injected failure');
     expect((await store.execute(r=>r.offers.findById(offer.id)))?.currentStatus).toBe(TransportOfferStatus.SUBMITTED);
     expect((await store.execute(r=>r.requests.findById(request.props.id)))?.currentStatus).toBe(TransportRequestStatus.OFFERED);
-    expect((await client.query('SELECT count(*)::int AS count FROM transport.assignments WHERE request_id=$1',[request.props.id])).rows[0].count).toBe(0);
-    expect((await client.query('SELECT count(*)::int AS count FROM transport.outbox_events WHERE correlation_id=$1',[request.props.id])).rows).toEqual(before.rows);
+    expect((await client.query('SELECT count(*)::int AS count FROM baney.asignacion WHERE solicitud_id=$1',[request.props.id])).rows[0].count).toBe(0);
+    expect((await client.query('SELECT count(*)::int AS count FROM baney.outbox WHERE correlacion_id=$1',[request.props.id])).rows).toEqual(before.rows);
   });
   it('rejects a stale optimistic write without changing the request',async()=>{
     const request=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(command()));

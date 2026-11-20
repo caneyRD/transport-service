@@ -3,11 +3,11 @@ import { TripHistoryRepository } from '../../application/transport/transport-que
 export class PostgresTripHistoryRepository implements TripHistoryRepository {
   constructor(private readonly client:PoolClient) {}
   async history(userId:string,limit:number,offset:number) {
-    const result=await this.client.query(`SELECT t.id,t.request_id AS "requestId",t.status,
-      t.started_at AS "startedAt",t.completed_at AS "completedAt",r.origin_address AS origin,r.destination_address AS destination
-      FROM transport.trips t JOIN transport.transport_requests r ON r.id=t.request_id
-      WHERE r.requester_id=$1 AND r.deleted_at IS NULL AND t.deleted_at IS NULL
-      ORDER BY t.created_at DESC,t.id DESC LIMIT $2 OFFSET $3`,[userId,limit,offset]);
+    const result=await this.client.query(`SELECT t.id,t.solicitud_id AS "requestId",t.estado,
+      t.iniciado_en AS "startedAt",t.entregado_en AS "completedAt",r.origen_direccion AS origin,r.destino_direccion AS destination
+      FROM baney.viaje t JOIN baney.solicitud_transporte r ON r.id=t.solicitud_id
+      WHERE r.solicitante_uid=$1 AND r.eliminado_en IS NULL AND t.eliminado_en IS NULL
+      ORDER BY t.creado_en DESC,t.id DESC LIMIT $2 OFFSET $3`,[userId,limit,offset]);
     return result.rows;
   }
 }
