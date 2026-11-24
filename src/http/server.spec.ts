@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[]}, fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}) }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[]}, fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}), updateLocation: async (_userId, location) => location, nearby: async query => [{ id: 'token-1', latitude: query.latitude + 0.01, longitude: query.longitude, distanceKm: 1.1, bodyType: 'DUMP_TRUCK', capacityValue: 12, capacityUnit: 'M3', updatedAt: new Date('2030-01-01T00:00:00Z') }] }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -40,6 +40,24 @@ describe('Transport HTTP API', () => {
     expect(invalid.status).toBe(400);
     const availability=await call('/carriers/me/availability','PUT',{available:'yes',startsAt:'2030-01-01',endsAt:'2030-01-02'});
     expect(availability.status).toBe(400);
+  });
+  it('reports the carrier location and lists nearby carriers without identities', async()=>{
+    const reported=await call('/carriers/me/location','PUT',{latitude:18.47,longitude:-69.93});
+    expect(reported.status).toBe(200);
+    expect(await reported.json()).toMatchObject({latitude:18.47,longitude:-69.93});
+    for (const body of [{latitude:'18',longitude:-69},{latitude:91,longitude:-69},{latitude:18,longitude:-69,recordedAt:'2999-01-01T00:00:00Z'}]) {
+      expect((await call('/carriers/me/location','PUT',body)).status).toBe(400);
+    }
+    const nearby=await call('/carriers/nearby?latitude=18.47&longitude=-69.93&radiusKm=10');
+    expect(nearby.status).toBe(200);
+    const list=await nearby.json();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({id:'token-1',distanceKm:1.1,bodyType:'DUMP_TRUCK'});
+    expect(list[0]).not.toHaveProperty('userId');
+    for (const query of ['','?latitude=18.4','?latitude=abc&longitude=-69','?latitude=18&longitude=-69&radiusKm=500','?latitude=18&longitude=-69&limit=0']) {
+      expect((await call('/carriers/nearby'+query)).status).toBe(400);
+    }
+    expect((await fetch(base+'/carriers/nearby?latitude=18&longitude=-69')).status).toBe(401);
   });
   it('schedules and revises requests through all six request endpoints',async()=>{
     const scheduled=await call('/transport-requests/scheduled','POST',{...input,timeWindow:{startsAt:'2040-01-01',endsAt:'2040-01-02'}});

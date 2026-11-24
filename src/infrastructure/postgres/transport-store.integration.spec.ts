@@ -106,6 +106,36 @@ integration('PostgreSQL transport integration', () => {
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
   });
+  it('locates available carriers nearby, hides identities and excludes offline, far, unavailable or pending ones',async()=>{
+    const fleet=(f:(h:ManageFleetHandler)=>Promise<unknown>)=>store.execute(r=>f(new ManageFleetHandler(r.fleet)));
+    const now=Date.now();
+    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.updateLocation(carrierId,{latitude:18.48612,longitude:-69.93118,recordedAt:new Date(now)}));
+    // An older, out-of-order report does not move the carrier back
+    const kept=await fleet(h=>h.updateLocation(carrierId,{latitude:18.9,longitude:-70.5,recordedAt:new Date(now-60_000)})) as {latitude:number};
+    expect(kept.latitude).toBeCloseTo(18.48612,5);
+    const near=await fleet(h=>h.nearby(18.47,-69.93,5)) as Array<Record<string,unknown>>;
+    const mine=near.find(c=>c.latitude===18.486 && c.longitude===-69.931);
+    expect(mine).toMatchObject({bodyType:'DUMP_TRUCK',capacityValue:20,capacityUnit:'M3'});
+    expect(mine!.distanceKm).toBeGreaterThan(1.5); expect(mine!.distanceKm).toBeLessThan(2.2);
+    expect(String(mine!.id)).toMatch(/^[0-9a-f]{32}$/); expect(mine!.id).not.toBe(driverId);
+    // Too far for the radius
+    expect((await fleet(h=>h.nearby(19.45,-70.69,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
+    // Unavailable now
+    await fleet(h=>h.availability(carrierId,false,new Date(now-1000),new Date(now+3600000)));
+    expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
+    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    // Stale position (offline phone)
+    await client.query("UPDATE baney.perfil_transportista SET ultima_ubicacion_en=now()-interval '10 minutes' WHERE id=$1",[driverId]);
+    expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
+    // Users without a carrier profile cannot report; pending carriers can report but never appear
+    await expect(fleet(h=>h.updateLocation(randomUUID(),{latitude:18.47,longitude:-69.93,recordedAt:new Date()}))).rejects.toThrow('not found');
+    await fleet(h=>h.updateLocation(carrierId,{latitude:18.48612,longitude:-69.93118,recordedAt:new Date()}));
+    await client.query("UPDATE baney.perfil_transportista SET estado='pendiente' WHERE id=$1",[driverId]);
+    expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
+    await client.query("UPDATE baney.perfil_transportista SET estado='habilitado' WHERE id=$1",[driverId]);
+    expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(true);
+  });
   it('preserves unavailable time outside a partially overlapping availability change',async()=>{
     const now=Date.now();
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(now-3600000),new Date(now+3600000)));

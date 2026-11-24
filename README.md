@@ -102,3 +102,9 @@ UC-TRA-46: `POST /trips/:id/tracking` con latitude, longitude, recordedAt ISO y 
 UC-TRA-36: `POST /trips/:id/incidents` con type (DELAY/DAMAGE/BREAKDOWN/ROUTE_DEVIATION/OTHER) y description. UC-TRA-143/145/152: `/breakdown`, `/delay`, `/cargo-damage` fijan el tipo y requieren description. Solo el transportista asignado durante el viaje puede reportar; persiste excepci�n y evento con versi�n del viaje. La cancelaci�n de solicitud cancela tambi�n sus viajes abiertos.
 
 Resultado al 14 noviembre 2026: 35 de 95 casos calendarizados de Transporte implementados, 60 pendientes. En esta continuaci�n se completaron 21 casos en cuatro lotes, con 69 pruebas exitosas (19 suites), incluidas integraci�n PostgreSQL por VPN y rollback. El alcance marcado es backend/API/PostgreSQL; no acredita UI ni QA cruzado del equipo.
+
+### Transportistas cercanos en el mapa (UC-TRA-03)
+
+- `PUT /carriers/me/location` con `latitude`, `longitude` y `recordedAt` ISO opcional (por defecto, ahora). El transportista la envía cada 10–15 s mientras está disponible. Guarda la última posición en `perfil_transportista.ultima_latitud/ultima_longitud/ultima_ubicacion_en` (columnas ya existentes del esquema compartido; sin migraciones). Rechaza coordenadas fuera de rango, fechas futuras o de hace más de 10 minutos, e ignora reportes fuera de orden.
+- `GET /carriers/nearby?latitude=&longitude=&radiusKm=15&limit=30` (máximo 50 km y 50 resultados). Devuelve transportistas **habilitados**, con un vehículo habilitado, disponibles ahora (ventana `disponible` o `perfil.disponible`), sin ventana `no_disponible` vigente, sin asignación activa y con ubicación de los últimos 5 minutos. Ordenado por distancia (Haversine).
+- Privacidad: posiciones redondeadas a ~110 m y un `id` opaco que cambia cada día; nunca incluye usuario, nombre, placa ni teléfono.

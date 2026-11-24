@@ -137,6 +137,17 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         if (typeof body.available !== 'boolean') throw new HttpError(400,'available must be boolean');
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).availability(requesterId,body.available as boolean,date(body.startsAt,'startsAt'),date(body.endsAt,'endsAt')))); return;
       }
+      if (url.pathname === '/carriers/me/location' && request.method === 'PUT') {
+        const body=await readBody(request);
+        const recordedAt=body.recordedAt===undefined ? new Date() : date(body.recordedAt,'recordedAt');
+        send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).updateLocation(requesterId,{latitude:number(body.latitude,'latitude'),longitude:number(body.longitude,'longitude'),recordedAt}))); return;
+      }
+      if (url.pathname === '/carriers/nearby' && request.method === 'GET') {
+        const query=(name:string)=>{ const raw=url.searchParams.get(name); return raw===null ? undefined : number(raw.trim()==='' ? NaN : Number(raw), name); };
+        const latitude=query('latitude'), longitude=query('longitude');
+        if (latitude===undefined || longitude===undefined) throw new HttpError(400,'latitude and longitude are required');
+        send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).nearby(latitude,longitude,query('radiusKm'),query('limit')))); return;
+      }
       if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['cargo','route','distance'].includes(fleetParts[3]) && request.method==='GET') {
         const data=await store.execute(async r=>{
           const queries=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory);
