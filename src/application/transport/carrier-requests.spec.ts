@@ -9,7 +9,7 @@ describe('Carrier requests (see and offer)', () => {
   const fleet: FleetRepository = { verification: jest.fn(async userId => ({ id: 'p', userId, status: status.value })), saveVehicle: jest.fn(), availability: jest.fn(),
     updateLocation: jest.fn(), nearby: jest.fn(), currentAvailability: jest.fn() };
   let requests: InMemoryTransportRequestRepository, offers: InMemoryTransportOfferRepository, handler: CarrierRequestsHandler;
-  const repo: CarrierRequestRepository = { openNear: jest.fn(async () => []), enabledVehicle: jest.fn(async () => 'veh-1'), offersOf: jest.fn(async () => []) };
+  const repo: CarrierRequestRepository = { openNear: jest.fn(async () => []), enabledVehicle: jest.fn(async () => 'veh-1'), offersOf: jest.fn(async () => []), reject: jest.fn(async (_carrier,_request,reason) => ({ reason })), publishBackhaul: jest.fn(async (_carrier,input) => input), backhaulsOf: jest.fn(async () => []) };
   const now = new Date('2030-01-01T12:00:00Z');
   async function newRequest(requesterId = 'client-1') {
     return new CreateTransportRequestHandler(requests).execute({ requesterId, cargo: { description: 'Grava', weightKg: 1000 },
@@ -32,6 +32,16 @@ describe('Carrier requests (see and offer)', () => {
     status.value = 'PENDING';
     await expect(handler.open('carrier', 18.4, -69.9)).rejects.toThrow('enabled');
   });
+ it('records a carrier rejection with a required reason', async () => {
+   const result=await handler.reject('carrier','request-1','No compatible vehicle');
+   expect(result).toEqual({reason:'No compatible vehicle'});
+   await expect(handler.reject('carrier','request-1',' ')).rejects.toThrow('reason');
+ });
+ it('publishes a validated backhaul window', async () => {
+   const result=await handler.publishBackhaul('carrier',{vehicleId:'veh-1',origin:{address:'Santo Domingo',latitude:18.4,longitude:-69.9},destination:{address:'Baní',latitude:18.3,longitude:-70.3},availableFrom:new Date('2030-01-01T08:00:00Z'),availableTo:new Date('2030-01-01T12:00:00Z'),capacityKg:1000});
+   expect(result).toMatchObject({vehicleId:'veh-1',capacityKg:1000});
+   await expect(handler.publishBackhaul('carrier',{vehicleId:'veh-1',origin:{address:'A',latitude:18,longitude:-69},destination:{address:'B',latitude:18,longitude:-69},availableFrom:new Date('2030-01-02'),availableTo:new Date('2030-01-01'),capacityKg:1})).rejects.toThrow('window');
+ });
 
   it('submits an offer with the carrier vehicle and marks the request as offered', async () => {
     const request = await newRequest();

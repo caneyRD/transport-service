@@ -69,7 +69,7 @@ npm test
 npm run build
 ```
 
-La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. La fecha de avance del cronograma es el 5 de noviembre de 2026: UC-TRA-01 a UC-TRA-08 están implementados y persistidos. UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 siguen pendientes del sprint actual.
+La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. `SHARE_LINK_SECRET` (16+ caracteres aleatorios) firma los enlaces públicos para compartir un viaje; sin ella, compartir responde 503. Las rutas `/admin/*` solo las usan cuentas con `rol` `moderador` o `superadmin` en `baney.usuario`. El estado verificado de cada caso de uso está en `docs/validation/2026-11-24-transport-f1-progress.md`. La fecha de avance del cronograma es el 5 de noviembre de 2026: UC-TRA-01 a UC-TRA-08 están implementados y persistidos. UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 siguen pendientes del sprint actual.
 
 ## Registro de transportista (UC-TRA-19)
 

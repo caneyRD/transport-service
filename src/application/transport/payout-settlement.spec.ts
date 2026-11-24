@@ -1,0 +1,2 @@
+import { PayoutSettlementHandler } from './payout-settlement';
+describe('Payout settlement',()=>{it('subtracts commission and late-cancellation penalty',()=>{expect(new PayoutSettlementHandler().execute(1000,100,50,'DOP')).toEqual({gross:1000,commission:100,penalty:50,net:850,currency:'DOP'});});it('rejects deductions above gross amount',()=>{expect(()=>new PayoutSettlementHandler().execute(100,80,30,'DOP')).toThrow('penalty');});});

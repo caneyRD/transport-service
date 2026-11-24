@@ -24,6 +24,9 @@ export interface TransportRequestProps {
   origin: Location;
   destination: Location;
   timeWindow: TimeWindow;
+  requestedVehicleType?: 'DUMP_TRUCK' | 'FLATBED' | 'OTHER';
+  requestedCapacityKg?: number;
+  specialInstructions?: string;
 }
 
 const transitions: Record<TransportRequestStatus, TransportRequestStatus[]> = {
@@ -49,6 +52,9 @@ export class TransportRequest extends AggregateRoot {
     if (!props.id.trim()) throw new DomainError('Transport request id is required');
     if (!props.requesterId.trim()) throw new DomainError('Requester id is required');
     if (!(props.cargo instanceof Cargo)) throw new DomainError('Transport request requires a valid Cargo value');
+    if (props.requestedVehicleType !== undefined && !['DUMP_TRUCK','FLATBED','OTHER'].includes(props.requestedVehicleType)) throw new DomainError('Invalid requested vehicle type');
+    if (props.requestedCapacityKg !== undefined && (!Number.isFinite(props.requestedCapacityKg) || props.requestedCapacityKg <= 0)) throw new DomainError('Requested vehicle capacity must be positive');
+    if (props.specialInstructions !== undefined && props.specialInstructions.length > 2000) throw new DomainError('Special instructions are too long');
     const request = new TransportRequest(props);
     request.addCreatedEvent();
     return request;

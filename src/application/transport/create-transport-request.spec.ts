@@ -45,4 +45,12 @@ describe('UC-TRA-01 Create transport request', () => {
     expect(repeated).toBe(first);
     expect(sequence).toBe(1);
   });
+
+  it('keeps requested vehicle type and capacity on the request', async () => {
+    const result = await new CreateTransportRequestHandler(new InMemoryTransportRequestRepository(), () => 'request-2').execute({
+      ...command, requestedVehicleType: 'DUMP_TRUCK', requestedCapacityKg: 12000,
+    });
+    expect(result.props.requestedVehicleType).toBe('DUMP_TRUCK');
+    expect(result.props.requestedCapacityKg).toBe(12000);
+  });
 });

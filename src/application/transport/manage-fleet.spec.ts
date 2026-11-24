@@ -1,7 +1,7 @@
 import { ManageFleetHandler, FleetRepository } from './manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
 describe('Fleet use cases',()=>{
-  const repository: FleetRepository={verification:jest.fn(async userId=>({id:'driver',userId,status:'ENABLED' as const})),saveVehicle:jest.fn(async v=>v),availability:jest.fn(async()=>({})),updateLocation:jest.fn(async(_u,l)=>l),nearby:jest.fn(async()=>[]),currentAvailability:jest.fn(async()=>({available:false}))};
+  const repository: FleetRepository={verification:jest.fn(async userId=>({id:'driver',userId,status:'ENABLED' as const})),saveVehicle:jest.fn(async v=>v),availability:jest.fn(async()=>({})),updateLocation:jest.fn(async(_u,l)=>l),nearby:jest.fn(async()=>[]),currentAvailability:jest.fn(async()=>({available:false})),publicProfile:jest.fn(async userId=>({userId,status:'ENABLED',ratingAverage:4.5,reviewCount:12,vehicleCount:2}))};
   const handler=new ManageFleetHandler(repository);
   const input={registrationNumber:' A-123 ',bodyType:VehicleBodyType.DUMP_TRUCK,capacityValue:20,capacityUnit:VehicleCapacityUnit.M3,capacityKg:20000};
   it('normalizes plate and registers a vehicle disabled pending approval',async()=>{
@@ -29,5 +29,8 @@ describe('Fleet use cases',()=>{
     await expect(handler.nearby(18,-69,51)).rejects.toThrow('Radius');
     await expect(handler.nearby(18,-69,10,51)).rejects.toThrow('Limit');
     await expect(handler.nearby(18,-69,10,1.5)).rejects.toThrow('Limit');
+  });
+  it('returns a public carrier profile without private identity fields',async()=>{
+    await expect(handler.publicProfile('carrier-1')).resolves.toEqual({userId:'carrier-1',status:'ENABLED',ratingAverage:4.5,reviewCount:12,vehicleCount:2});
   });
 });

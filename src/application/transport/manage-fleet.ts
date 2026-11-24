@@ -9,6 +9,10 @@ export interface VehicleInput {
 }
 export interface CarrierLocation { latitude: number; longitude: number; recordedAt: Date }
 export interface NearbyCarriersQuery { latitude: number; longitude: number; radiusKm: number; limit: number; freshMinutes: number }
+/** What a client sees of a carrier before accepting its offer (UC-TRA-76/77): no plates, phones or documents. */
+export interface CarrierPublicProfile { userId: string; status: string; ratingAverage: number; reviewCount: number; vehicleCount: number;
+  displayName?: string; memberSince?: Date; completedTrips?: number; vehicles?: Array<{ bodyType: string; capacity: number; capacityUnit: string }>;
+  recentReviews?: Array<{ score: number; comment?: string; createdAt: Date }>; }
 /** Public view of an available carrier: approximate position, no identity (UC-TRA-03). */
 export interface NearbyCarrier {
   id: string; latitude: number; longitude: number; distanceKm: number;
@@ -22,6 +26,7 @@ export interface FleetRepository {
   nearby(query: NearbyCarriersQuery): Promise<NearbyCarrier[]>;
   /** Ventana de disponibilidad vigente ahora, si hay una. */
   currentAvailability(userId: string): Promise<{ available: boolean; startsAt?: Date; endsAt?: Date }>;
+  publicProfile?(userId: string): Promise<CarrierPublicProfile | undefined>;
 }
 
 /** Maximum search radius and result size for the client map. */
@@ -64,6 +69,13 @@ export class ManageFleetHandler {
   async currentAvailability(userId: string) {
     await this.verification(userId);
     return this.repository.currentAvailability(userId);
+  }
+  async publicProfile(userId: string) {
+    if (!userId.trim()) throw new DomainError('Carrier user id is required');
+    if (!this.repository.publicProfile) throw new DomainError('Carrier profile view is not configured');
+    const profile=await this.repository.publicProfile(userId);
+    if (!profile) throw new DomainError('Carrier profile was not found');
+    return profile;
   }
   /** UC-TRA-03: enabled, available and recently located carriers around a point. */
   async nearby(latitude: number, longitude: number, radiusKm = 15, limit = 30) {

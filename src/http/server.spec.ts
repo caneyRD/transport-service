@@ -17,10 +17,11 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[],requests:async(userId:string)=>[{id:'r-1',status:'OPEN',requester:userId}]}, fleet: { verification: async userId => ({id:'profile-1',userId,status: userId === 'other-client' ? 'ENABLED' : 'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}), updateLocation: async (_userId, location) => location, currentAvailability: async () => ({ available: true, startsAt: new Date('2030-01-01T00:00:00Z'), endsAt: new Date('2030-01-01T12:00:00Z') }), nearby: async query => [{ id: 'token-1', latitude: query.latitude + 0.01, longitude: query.longitude, distanceKm: 1.1, bodyType: 'DUMP_TRUCK', capacityValue: 12, capacityUnit: 'M3', updatedAt: new Date('2030-01-01T00:00:00Z') }] }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] }, carrierRequests: { openNear: async q => [{ id: 'req-9', status: 'OPEN', distanceKm: 2.5, createdAt: new Date(), cargo: { description: 'Grava' }, origin: { address: 'A', latitude: q.latitude, longitude: q.longitude }, destination: { address: 'B', latitude: 18.5, longitude: -70 }, timeWindow: { startsAt: new Date(), endsAt: new Date() } }], enabledVehicle: async () => 'veh-1', offersOf: async () => [] } }), health: async () => {} }, async authorization => {
+    (requests as InMemoryTransportRequestRepository & { addCargoPhoto: (requestId:string, requesterId:string, url:string)=>Promise<unknown> }).addCargoPhoto = async (requestId, requesterId, url) => ({ id:'photo-1', requestId, url, uploadedBy: requesterId });
+    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[],requests:async(userId:string)=>[{id:'r-1',status:'OPEN',requester:userId}]}, fleet: { verification: async userId => ({id:'profile-1',userId,status: userId === 'other-client' ? 'ENABLED' : 'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}), updateLocation: async (_userId, location) => location, currentAvailability: async () => ({ available: true, startsAt: new Date('2030-01-01T00:00:00Z'), endsAt: new Date('2030-01-01T12:00:00Z') }), nearby: async query => [{ id: 'token-1', latitude: query.latitude + 0.01, longitude: query.longitude, distanceKm: 1.1, bodyType: 'DUMP_TRUCK', capacityValue: 12, capacityUnit: 'M3', updatedAt: new Date('2030-01-01T00:00:00Z') }] }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] }, carrierRequests: { openNear: async q => [{ id: 'req-9', status: 'OPEN', distanceKm: 2.5, createdAt: new Date(), cargo: { description: 'Grava' }, origin: { address: 'A', latitude: q.latitude, longitude: q.longitude }, destination: { address: 'B', latitude: 18.5, longitude: -70 }, timeWindow: { startsAt: new Date(), endsAt: new Date() } }], enabledVehicle: async () => 'veh-1', offersOf: async () => [] }, approval: { reviewerRole: async userId => userId === 'other-client' ? 'moderador' : 'usuario', listCarriers: async status => [{ userId: 'c-1', status: status ?? 'pendiente' }], carrierDetail: async id => ({ userId: id, vehicles: [], documents: [], missingDocuments: [] }), setCarrierStatus: async (id, status, who, reason) => ({ userId: id, status, reviewedBy: who.id, reason }), setVehicleStatus: async (id, status) => ({ id, status }) }, admin: { liveTrips: async () => [{ tripId: 't-1' }], disputes: async () => [], resolveDispute: async (_who, id, outcome, _note, amount) => ({ id, outcome, refundAmount: amount }), createZone: async (_who, zone) => ({ id: 'z-1', ...zone }), updateZone: async (_who, id, changes) => ({ id, ...changes }), createCommissionRule: async (_who, rule) => ({ id: 'c-1', ...rule }) }, documents: { add: async (_u, d) => d, list: async () => [], review: async (id, reviewer, status) => ({ id, status, reviewedBy: reviewer }) }, clientServices: { priceRule: async () => ({ id: 'p-1', basePrice: 1000, pricePerKm: 50, pricePerTon: 0, minimum: 0, currency: 'DOP' }), commissionTerms: async () => ({ percentage: 0.1, fixedAmount: 0 }), cargoReady: async (requestId) => ({ requestId }), assertParticipant: async (_trip, userId) => { if (userId !== 'client-1') throw new Error('not a participant'); }, sharedTrip: async () => ({ state: 'en_transito' }) } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
-    });
+    }, { shareSecret: 'http-share-secret-0123456' });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
@@ -29,6 +30,57 @@ describe('Transport HTTP API', () => {
     return fetch(base + path, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
   }
   async function create() { const response = await call('/transport-requests', 'POST', input); expect(response.status).toBe(201); return response.json(); }
+  it('estimates price and earnings, marks cargo ready and serves a shared trip without a token', async()=>{
+    const estimate=await call('/transport-requests/price-estimate','POST',{origin:{address:'A',latitude:18.4,longitude:-69.9},destination:{address:'B',latitude:18.5,longitude:-70}});
+    expect(estimate.status).toBe(200); expect(await estimate.json()).toMatchObject({currency:'DOP',breakdown:{base:1000}});
+    expect((await call('/transport-requests/price-estimate','POST',{origin:{address:'A',latitude:99,longitude:0},destination:{address:'B',latitude:1,longitude:1}})).status).toBe(400);
+    expect(await (await call('/carrier/earning-estimate','POST',{amount:1000})).json()).toEqual({gross:1000,commission:100,net:900,currency:'DOP'});
+    expect((await call('/transport-requests/r-1/cargo-ready','POST',{})).status).toBe(200);
+    const shared=await call('/trips/t-1/share','POST',{});
+    expect(shared.status).toBe(201);
+    const { path } = await shared.json() as { path: string };
+    const open=await fetch(base+path);
+    expect(open.status).toBe(200); expect(await open.json()).toEqual({state:'en_transito'});
+    expect((await fetch(base+'/shared/trips/forged.token')).status).toBe(404);
+  });
+  it('lets only moderators review KYC documents (UC-TRA-37)', async()=>{
+    expect((await call('/carrier-documents/d-1/review','PATCH',{status:'aprobado'})).status).toBe(403);
+    const ok=await call('/carrier-documents/d-1/review','PATCH',{status:'aprobado'},'moderator');
+    expect(ok.status).toBe(200); expect(await ok.json()).toEqual({id:'d-1',status:'aprobado',reviewedBy:'other-client'});
+    expect((await call('/carrier-documents/d-1/review','PATCH',{status:'rechazado'},'moderator')).status).toBe(400);
+  });
+  it('serves the transport back office only to moderators', async()=>{
+    expect((await call('/admin/trips/live')).status).toBe(403);
+    expect(await (await call('/admin/trips/live','GET',undefined,'moderator')).json()).toEqual([{tripId:'t-1'}]);
+    expect((await call('/admin/disputes/d-1/resolve','POST',{outcome:'reembolso_parcial',resolution:'ok',amount:50},'moderator')).status).toBe(400);
+    const resolved=await call('/admin/disputes/d-1/resolve','POST',{outcome:'reembolso_parcial',resolution:'ok',amount:50},'moderator',{'idempotency-key':'k-1'});
+    expect(resolved.status).toBe(200); expect(await resolved.json()).toEqual({id:'d-1',outcome:'reembolso_parcial',refundAmount:50});
+    expect((await call('/admin/zones','POST',{name:'SD',latitude:18.4,longitude:-69.9,radiusMeters:20000},'moderator')).status).toBe(201);
+    expect((await call('/admin/zones/z-1','PATCH',{active:'no'},'moderator')).status).toBe(400);
+    expect((await call('/admin/zones/z-1','PATCH',{active:false},'moderator')).status).toBe(200);
+    expect((await call('/admin/commission-rules','POST',{name:'12%',type:'porcentaje',percentage:0.12},'moderator')).status).toBe(201);
+    expect((await call('/admin/commission-rules','POST',{name:'12%',type:'porcentaje',percentage:0.12})).status).toBe(403);
+  });
+  it('lets only moderators list and approve carriers and vehicles', async()=>{
+    expect((await call('/admin/carriers?status=pendiente')).status).toBe(403);
+    expect((await call('/admin/carriers/c-1/status','PATCH',{status:'habilitado'})).status).toBe(403);
+    const list=await call('/admin/carriers?status=pendiente','GET',undefined,'moderator');
+    expect(list.status).toBe(200); expect(await list.json()).toEqual([{userId:'c-1',status:'pendiente'}]);
+    expect((await call('/admin/carriers?status=raro','GET',undefined,'moderator')).status).toBe(400);
+    expect((await call('/admin/carriers/c-1','GET',undefined,'moderator')).status).toBe(200);
+    const ok=await call('/admin/carriers/c-1/status','PATCH',{status:'habilitado'},'moderator');
+    expect(ok.status).toBe(200); expect(await ok.json()).toMatchObject({userId:'c-1',status:'habilitado',reviewedBy:'other-client'});
+    expect((await call('/admin/carriers/c-1/status','PATCH',{status:'suspendido'},'moderator')).status).toBe(400);
+    expect((await call('/admin/carriers/other-client/status','PATCH',{status:'habilitado'},'moderator')).status).toBe(400);
+    expect((await call('/admin/vehicles/v-1/status','PATCH',{status:'habilitado'},'moderator')).status).toBe(200);
+  });
+  it('uploads cargo photos only with a valid URL and request ownership', async()=>{
+    const created=await create();
+    const uploaded=await call(`/transport-requests/${created.id}/photos`,'POST',{url:'https://cdn.example.test/cargo-1.jpg'});
+    expect(uploaded.status).toBe(201); expect(await uploaded.json()).toMatchObject({requestId:created.id,url:'https://cdn.example.test/cargo-1.jpg'});
+    expect((await call(`/transport-requests/${created.id}/photos`,'POST',{url:'file:///tmp/cargo.jpg'})).status).toBe(400);
+    expect((await call(`/transport-requests/${created.id}/photos`,'POST',{url:'not-a-url'})).status).toBe(400);
+  });
   async function offer(requestId: string, id: string) {
     const request = (await requests.findById(requestId))!; request.markOffered();
     const result = TransportOffer.create({ id, requestId, carrierId: 'carrier-1', price: Money.create(1500, 'DOP'), validUntil: new Date(Date.now() + 3600000) });
@@ -104,7 +156,7 @@ describe('Transport HTTP API', () => {
   it('exposes start, GPS and incident routes with validated types',async()=>{
     expect((await call('/carrier/requests/request-1/start','POST',{})).status).toBe(200);
     const point=await call('/trips/trip-1/tracking','POST',{latitude:18,longitude:-69,recordedAt:new Date().toISOString(),sourcePointId:'point-1'});expect(point.status).toBe(200);
-    for(const [route,type] of [['incidents','OTHER'],['breakdown','BREAKDOWN'],['delay','DELAY'],['cargo-damage','DAMAGE']]) {
+    for(const [route,type] of [['incidents','OTHER'],['breakdown','BREAKDOWN'],['delay','DELAY'],['cargo-damage','DAMAGE'],['accident','ACCIDENT'],['cargo-missing','CARGO_MISSING'],['no-show','NO_SHOW'],['customer-absent','CUSTOMER_ABSENT'],['assistance','ASSISTANCE'],['sos','SOS']]) {
       const result=await call('/trips/trip-1/'+route,'POST',{type:'OTHER',description:'Test'});expect(result.status).toBe(200);expect((await result.json()).type).toBe(type);
     }
     expect((await call('/trips/trip-1/incidents','POST',{type:'BAD',description:'Test'})).status).toBe(400);

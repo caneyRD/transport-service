@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '../../domain/shared/domain-error';
-import { TransportOffer, TransportOfferStatus } from '../../domain/transport/transport-offer';
+import { OfferActor, TransportOffer, TransportOfferStatus } from '../../domain/transport/transport-offer';
 import { TransportRequest } from '../../domain/transport/transport-request';
 import { TransportOfferRepository } from './ports/transport-offer.repository';
 import { TransportRequestRepository } from './ports/transport-request.repository';
@@ -25,6 +25,8 @@ export class AcceptOfferHandler {
     const offer = await this.offerRepository.findById(command.offerId);
     if (!offer || offer.requestId !== command.requestId) throw new DomainError(`Offer ${command.offerId} was not found for the request`);
     if (offer.currentStatus !== TransportOfferStatus.SUBMITTED) throw new DomainError('Only a submitted offer can be accepted');
+    // The client's own counteroffer is accepted (or countered) by the carrier, not by the client (UC-TRA-27).
+    if (offer.proposedBy === OfferActor.CLIENT) throw new DomainError('Only the carrier can accept your counteroffer');
 
     offer.accept();
     request.assign(this.generateAssignmentId());

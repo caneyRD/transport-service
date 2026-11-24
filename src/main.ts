@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const server = createTransportServer(store, jwtAuthenticator({
     publicKey: process.env.JWT_PUBLIC_KEY, secret: process.env.JWT_SECRET,
     issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE,
-  }));
+  }), { shareSecret: process.env.SHARE_LINK_SECRET });
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
   server.on('error', () => { console.error('HTTP server failed'); void store.close(); process.exitCode = 1; });

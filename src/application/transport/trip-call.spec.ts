@@ -1,0 +1,2 @@
+import { TripCallHandler } from './trip-call';
+describe('Trip calls',()=>{it('creates a validated call request',async()=>{const repo={request:jest.fn(async()=>({id:'c-1',tripId:'t',requestedBy:'u',status:'requested',createdAt:new Date()}))};await expect(new TripCallHandler(repo).request('t','u')).resolves.toMatchObject({status:'requested'});expect(()=>new TripCallHandler(repo).request(' ','u')).toThrow('required');});});

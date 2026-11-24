@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '../../domain/shared/domain-error';
-import { TransportOffer, TransportOfferStatus } from '../../domain/transport/transport-offer';
+import { OfferActor, TransportOffer, TransportOfferStatus } from '../../domain/transport/transport-offer';
 import { TransportRequestStatus } from '../../domain/transport/transport-request';
 import { Money } from '../../domain/transport/value-objects/money';
 import { FleetRepository } from './manage-fleet';
@@ -29,11 +29,17 @@ export interface CarrierRequestRepository {
   /** El vehículo indicado (si es del transportista y está habilitado) o el habilitado de mayor capacidad. */
   enabledVehicle(carrierUserId: string, vehicleId?: string): Promise<string | undefined>;
   offersOf(carrierUserId: string, limit: number): Promise<CarrierOfferView[]>;
+  reject?(carrierUserId: string, requestId: string, reason: string): Promise<unknown>;
+  publishBackhaul?(carrierUserId: string, input: BackhaulInput): Promise<unknown>;
+  backhaulsOf?(carrierUserId: string): Promise<unknown[]>;
 }
+export interface BackhaulInput { vehicleId: string; origin: { address: string; latitude: number; longitude: number }; destination: { address: string; latitude: number; longitude: number }; availableFrom: Date; availableTo: Date; capacityKg: number; }
 
 export const OPEN_REQUESTS_MAX_RADIUS_KM = 100;
 export const OFFER_DEFAULT_HOURS = 24;
 export const OFFER_MAX_DAYS = 7;
+/** Counteroffers allowed in one negotiation (client and carrier together). */
+export const MAX_NEGOTIATION_ROUNDS = 4;
 const OPEN_FOR_OFFERS = [TransportRequestStatus.OPEN, TransportRequestStatus.MATCHING, TransportRequestStatus.OFFERED];
 
 export class CarrierRequestsHandler {
@@ -86,9 +92,62 @@ export class CarrierRequestsHandler {
     return offer;
   }
 
+  /**
+   * UC-TRA-27: the carrier answers the client's counteroffer: accepting it assigns the trip,
+   * or it proposes another price that the client may accept. At most MAX_NEGOTIATION_ROUNDS counters.
+   */
+  async respondToCounter(userId: string, offerId: string, action: 'accept' | 'counter', amount?: number, now = new Date()) {
+    await this.enabled(userId);
+    const offer = await this.offers.findById(offerId);
+    if (!offer || offer.carrierId !== userId) throw new DomainError('Offer was not found');
+    if (offer.proposedBy !== OfferActor.CLIENT) throw new DomainError('Only a client counteroffer can be answered');
+    if (offer.currentStatus !== TransportOfferStatus.SUBMITTED) throw new DomainError('Only a submitted offer can be answered');
+    const request = await this.requests.findById(offer.requestId);
+    if (!request) throw new DomainError('Transport request was not found');
+    if (action === 'accept') {
+      offer.accept();
+      request.assign(randomUUID());
+      await this.offers.save(offer);
+      await this.requests.save(request);
+      return { offer, assignmentId: request.currentAssignmentId };
+    }
+    if (action !== 'counter') throw new DomainError('Invalid answer');
+    if (amount === undefined || !Number.isFinite(amount) || amount <= 0 || amount > 10_000_000) throw new DomainError('Offer amount must be greater than 0');
+    if (offer.round >= MAX_NEGOTIATION_ROUNDS) throw new DomainError('Negotiation round limit reached');
+    const counter = offer.counter({ id: randomUUID(), price: Money.create(Math.round(amount * 100) / 100, offer.price.currency),
+      validUntil: new Date(now.getTime() + OFFER_DEFAULT_HOURS * 3600_000), proposedBy: OfferActor.CARRIER });
+    await this.offers.save(offer);
+    await this.offers.save(counter);
+    return { offer: counter };
+  }
+
   async myOffers(userId: string, limit = 30) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new DomainError('Limit must be between 1 and 100');
     await this.enabled(userId);
     return this.carrierRequests.offersOf(userId, limit);
+  }
+
+  async reject(userId: string, requestId: string, reason: string) {
+    await this.enabled(userId);
+    if (!requestId.trim()) throw new DomainError('Request id is required');
+    if (!reason.trim() || reason.length > 500) throw new DomainError('Rejection reason is required');
+    if (!this.carrierRequests.reject) throw new DomainError('Carrier request rejection is not configured');
+    return this.carrierRequests.reject(userId, requestId, reason.trim());
+  }
+
+  async publishBackhaul(userId: string, input: BackhaulInput) {
+    await this.enabled(userId);
+    if (!input.vehicleId.trim() || !input.origin.address.trim() || !input.destination.address.trim()) throw new DomainError('Backhaul vehicle and addresses are required');
+    if (![input.origin.latitude,input.origin.longitude,input.destination.latitude,input.destination.longitude].every(Number.isFinite)) throw new DomainError('Backhaul coordinates are invalid');
+    if (!Number.isFinite(input.capacityKg) || input.capacityKg <= 0) throw new DomainError('Backhaul capacity must be positive');
+    if (!(input.availableFrom instanceof Date) || !(input.availableTo instanceof Date) || input.availableTo <= input.availableFrom) throw new DomainError('Backhaul window is invalid');
+    if (!this.carrierRequests.publishBackhaul) throw new DomainError('Backhaul is not configured');
+    return this.carrierRequests.publishBackhaul(userId,input);
+  }
+
+  async backhaulsOf(userId: string) {
+    await this.enabled(userId);
+    if (!this.carrierRequests.backhaulsOf) throw new DomainError('Backhaul is not configured');
+    return this.carrierRequests.backhaulsOf(userId);
   }
 }

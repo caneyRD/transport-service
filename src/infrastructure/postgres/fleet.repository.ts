@@ -3,7 +3,7 @@ import { PoolClient } from 'pg';
 import { DomainError } from '../../domain/shared/domain-error';
 import { Vehicle } from '../../domain/transport/vehicle';
 import { CarrierRegistration } from '../../application/transport/register-carrier';
-import { CarrierLocation, FleetRepository, NearbyCarrier, NearbyCarriersQuery } from '../../application/transport/manage-fleet';
+import { CarrierLocation, CarrierPublicProfile, FleetRepository, NearbyCarrier, NearbyCarriersQuery } from '../../application/transport/manage-fleet';
 
 export class PostgresFleetRepository implements FleetRepository {
   constructor(private readonly client: PoolClient) {}
@@ -100,6 +100,27 @@ export class PostgresFleetRepository implements FleetRepository {
       ORDER BY (a.estado='no_disponible') DESC, a.desde DESC LIMIT 1`,[userId]);
     const row=result.rows[0];
     if (!row) return { available: false };
+    // canonicalRows renames estado/desde/hasta and decodes the state.
     return { available: row.status === 'AVAILABLE', startsAt: row.starts_at, endsAt: row.ends_at };
+  }
+
+  async publicProfile(userId: string): Promise<CarrierPublicProfile | undefined> {
+    const result=await this.client.query(`SELECT p.usuario_uid AS "userId",p.estado,p.rating_promedio::float8 AS "ratingAverage",p.total_resenas AS "reviewCount",
+      (SELECT count(*)::int FROM baney.vehiculo v WHERE v.dueno_uid IN (p.usuario_uid,p.dueno_flota_uid) AND v.eliminado_en IS NULL) AS "vehicleCount"
+      ,split_part(COALESCE(u.nombre_completo,''),' ',1) AS "firstName",p.creado_en AS "memberSince",
+      (SELECT count(*)::int FROM baney.asignacion a WHERE a.perfil_transportista_id=p.id AND a.estado='completada') AS "completedTrips"
+      FROM baney.perfil_transportista p JOIN baney.usuario u ON u.id=p.usuario_uid WHERE p.usuario_uid=$1 AND p.eliminado_en IS NULL`,[userId]);
+    const row=result.rows[0];
+    if (!row) return undefined;
+    const vehicles=await this.client.query(`SELECT v.tipo_carroceria AS "kind",v.capacidad::float8 AS "size",v.unidad_capacidad AS "unit" FROM baney.vehiculo v
+      JOIN baney.perfil_transportista p ON v.dueno_uid IN (p.usuario_uid,p.dueno_flota_uid)
+      WHERE p.usuario_uid=$1 AND v.estado='habilitado' AND v.eliminado_en IS NULL ORDER BY v.capacidad_kg DESC`,[userId]);
+    // Only reviews that passed moderation are public.
+    const reviews=await this.client.query(`SELECT puntuacion AS "stars",comentario AS "text",creado_en AS "at" FROM baney.resena
+      WHERE calificado_uid=$1 AND tipo='transportista' AND moderacion='aprobada' ORDER BY creado_en DESC LIMIT 5`,[userId]);
+    return { userId: row.userId, status: row.status, ratingAverage: row.ratingAverage, reviewCount: row.reviewCount, vehicleCount: row.vehicleCount,
+      displayName: row.firstName || undefined, memberSince: row.memberSince, completedTrips: row.completedTrips,
+      vehicles: vehicles.rows.map(v=>({ bodyType: v.kind, capacity: v.size, capacityUnit: v.unit })),
+      recentReviews: reviews.rows.map(x=>({ score: Number(x.stars), comment: x.text ?? undefined, createdAt: x.at })) };
   }
 }

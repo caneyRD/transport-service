@@ -29,6 +29,9 @@ export interface CreateTransportRequestCommand {
     readonly startsAt: Date;
     readonly endsAt: Date;
   };
+  readonly requestedVehicleType?: 'DUMP_TRUCK' | 'FLATBED' | 'OTHER';
+  readonly requestedCapacityKg?: number;
+  readonly specialInstructions?: string;
 }
 
 export class CreateTransportRequestHandler {
@@ -57,6 +60,9 @@ export class CreateTransportRequestHandler {
       origin: Location.create(command.origin.address, command.origin.latitude, command.origin.longitude),
       destination: Location.create(command.destination.address, command.destination.latitude, command.destination.longitude),
       timeWindow: TimeWindow.create(command.timeWindow.startsAt, command.timeWindow.endsAt),
+      requestedVehicleType: command.requestedVehicleType,
+      requestedCapacityKg: command.requestedCapacityKg,
+      specialInstructions: command.specialInstructions?.trim() || undefined,
     });
 
     // UC-TRA-51 covers saving a draft. UC-TRA-01 creates an open request.
