@@ -1,6 +1,7 @@
 import { encode, canonicalRows } from './canonical-values';
 import { PostgresTripOperationsRepository } from './trip-operations.repository';
 import { PostgresTripHistoryRepository } from './trip-history.repository';
+import { PostgresCarrierRequestRepository } from './carrier-requests.repository';
 import { PostgresFleetRepository } from './fleet.repository';
 import { CarrierRepository, CarrierRegistration } from '../../application/transport/register-carrier';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +31,7 @@ export interface TransportRepositories {
   fleet: PostgresFleetRepository;
   tripHistory: PostgresTripHistoryRepository;
   operations: PostgresTripOperationsRepository;
+  carrierRequests: PostgresCarrierRequestRepository;
 }
 
 export class PostgresCarrierRepository implements CarrierRepository {
@@ -243,7 +245,7 @@ export class PostgresTransportStore {
       const requests=new PostgresTransportRequestRepository(client,events);
       const result=await action({requests,operations:new PostgresTripOperationsRepository(client,requests,outbox),
         offers:new PostgresTransportOfferRepository(client,events),candidates:new PostgresMatchingCandidateRepository(client),outbox,
-        tripHistory:new PostgresTripHistoryRepository(client),fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client)});
+        tripHistory:new PostgresTripHistoryRepository(client),fleet:new PostgresFleetRepository(client),carriers:new PostgresCarrierRepository(client),tracking:new PostgresTrackingRepository(client),carrierRequests:new PostgresCarrierRequestRepository(client)});
       await client.query('COMMIT'); events.committed(); return result;
     } catch(error) {
       await client.query('ROLLBACK'); throw error;

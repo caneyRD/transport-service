@@ -17,7 +17,7 @@ describe('Transport HTTP API', () => {
     timeWindow: { startsAt: '2026-10-31T08:00:00Z', endsAt: '2026-10-31T12:00:00Z' } };
   beforeEach(async () => {
     requests = new InMemoryTransportRequestRepository(); offers = new InMemoryTransportOfferRepository();
-    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[]}, fleet: { verification: async userId => ({id:'profile-1',userId,status:'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}), updateLocation: async (_userId, location) => location, nearby: async query => [{ id: 'token-1', latitude: query.latitude + 0.01, longitude: query.longitude, distanceKm: 1.1, bodyType: 'DUMP_TRUCK', capacityValue: 12, capacityUnit: 'M3', updatedAt: new Date('2030-01-01T00:00:00Z') }] }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] } }), health: async () => {} }, async authorization => {
+    server = createTransportServer({ execute: action => action({ operations:{start:async()=>({status:'IN_PROGRESS'}),track:async (_user,point)=>point,incident:async (_user,incident)=>incident}, tripHistory:{history:async()=>[],requests:async(userId:string)=>[{id:'r-1',status:'OPEN',requester:userId}]}, fleet: { verification: async userId => ({id:'profile-1',userId,status: userId === 'other-client' ? 'ENABLED' : 'PENDING'}), saveVehicle: async v => v, availability: async () => ({status:'UNAVAILABLE'}), updateLocation: async (_userId, location) => location, currentAvailability: async () => ({ available: true, startsAt: new Date('2030-01-01T00:00:00Z'), endsAt: new Date('2030-01-01T12:00:00Z') }), nearby: async query => [{ id: 'token-1', latitude: query.latitude + 0.01, longitude: query.longitude, distanceKm: 1.1, bodyType: 'DUMP_TRUCK', capacityValue: 12, capacityUnit: 'M3', updatedAt: new Date('2030-01-01T00:00:00Z') }] }, carriers: { register: async userId => ({ id: 'profile-1', userId, status: 'PENDING' }) }, requests, offers, candidates: new InMemoryMatchingCandidateRepository(), tracking: { findLiveByRequestId: async () => [] }, carrierRequests: { openNear: async q => [{ id: 'req-9', status: 'OPEN', distanceKm: 2.5, createdAt: new Date(), cargo: { description: 'Grava' }, origin: { address: 'A', latitude: q.latitude, longitude: q.longitude }, destination: { address: 'B', latitude: 18.5, longitude: -70 }, timeWindow: { startsAt: new Date(), endsAt: new Date() } }], enabledVehicle: async () => 'veh-1', offersOf: async () => [] } }), health: async () => {} }, async authorization => {
       if (!authorization) throw new HttpError(401, 'Token required');
       return authorization === 'Bearer owner' ? 'client-1' : 'other-client';
     });
@@ -40,6 +40,30 @@ describe('Transport HTTP API', () => {
     expect(invalid.status).toBe(400);
     const availability=await call('/carriers/me/availability','PUT',{available:'yes',startsAt:'2030-01-01',endsAt:'2030-01-02'});
     expect(availability.status).toBe(400);
+  });
+  it('lets an enabled carrier list open requests, offer and see its offers; pending carriers are refused', async()=>{
+    const created=await create();
+    const open=await call('/carrier/requests/open?latitude=18.4&longitude=-69.9&radiusKm=20','GET',undefined,'other');
+    expect(open.status).toBe(200);
+    expect((await open.json())[0]).toMatchObject({id:'req-9',distanceKm:2.5});
+    expect((await call('/carrier/requests/open?latitude=18.4&longitude=-69.9','GET',undefined,'owner')).status).toBe(409);
+    expect((await call('/carrier/requests/open?latitude=18.4','GET',undefined,'other')).status).toBe(400);
+    const offered=await call(`/carrier/requests/${created.id}/offers`,'POST',{amount:3500},'other');
+    expect(offered.status).toBe(201);
+    expect(await offered.json()).toMatchObject({requestId:created.id,carrierId:'other-client',vehicleId:'veh-1',status:'SUBMITTED',price:{amount:3500,currency:'DOP'}});
+    expect((await call(`/carrier/requests/${created.id}/offers`,'POST',{amount:3000},'other')).status).toBe(409);
+    expect((await call(`/carrier/requests/${created.id}/offers`,'POST',{amount:'mucho'},'other')).status).toBe(400);
+    const received=await (await call(`/transport-requests/${created.id}/offers`)).json();
+    expect(received).toHaveLength(1);
+    expect((await call('/carrier/offers','GET',undefined,'other')).status).toBe(200);
+    expect((await call('/carriers/me/availability')).status).toBe(200);
+  });
+  it('lists only the authenticated client requests and validates pagination', async()=>{
+    const mine=await call('/transport-requests?limit=10');
+    expect(mine.status).toBe(200);
+    expect(await mine.json()).toEqual([{id:'r-1',status:'OPEN',requester:'client-1'}]);
+    for (const q of ['?limit=0','?limit=101','?offset=-1','?limit=abc']) expect((await call('/transport-requests'+q)).status).toBe(400);
+    expect((await fetch(base+'/transport-requests')).status).toBe(401);
   });
   it('reports the carrier location and lists nearby carriers without identities', async()=>{
     const reported=await call('/carriers/me/location','PUT',{latitude:18.47,longitude:-69.93});

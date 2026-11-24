@@ -1,7 +1,7 @@
 import { ManageFleetHandler, FleetRepository } from './manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
 describe('Fleet use cases',()=>{
-  const repository: FleetRepository={verification:jest.fn(async userId=>({id:'driver',userId,status:'ENABLED' as const})),saveVehicle:jest.fn(async v=>v),availability:jest.fn(async()=>({})),updateLocation:jest.fn(async(_u,l)=>l),nearby:jest.fn(async()=>[])};
+  const repository: FleetRepository={verification:jest.fn(async userId=>({id:'driver',userId,status:'ENABLED' as const})),saveVehicle:jest.fn(async v=>v),availability:jest.fn(async()=>({})),updateLocation:jest.fn(async(_u,l)=>l),nearby:jest.fn(async()=>[]),currentAvailability:jest.fn(async()=>({available:false}))};
   const handler=new ManageFleetHandler(repository);
   const input={registrationNumber:' A-123 ',bodyType:VehicleBodyType.DUMP_TRUCK,capacityValue:20,capacityUnit:VehicleCapacityUnit.M3,capacityKg:20000};
   it('normalizes plate and registers a vehicle disabled pending approval',async()=>{

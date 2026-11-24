@@ -20,6 +20,8 @@ export interface FleetRepository {
   availability(userId: string, available: boolean, startsAt: Date, endsAt: Date): Promise<unknown>;
   updateLocation(userId: string, location: CarrierLocation): Promise<CarrierLocation>;
   nearby(query: NearbyCarriersQuery): Promise<NearbyCarrier[]>;
+  /** Ventana de disponibilidad vigente ahora, si hay una. */
+  currentAvailability(userId: string): Promise<{ available: boolean; startsAt?: Date; endsAt?: Date }>;
 }
 
 /** Maximum search radius and result size for the client map. */
@@ -58,6 +60,10 @@ export class ManageFleetHandler {
     if (at > now.getTime() + 60_000) throw new DomainError('Location time cannot be in the future');
     if (at < now.getTime() - 10 * 60_000) throw new DomainError('Location is too old to be reported');
     return this.repository.updateLocation(userId, location);
+  }
+  async currentAvailability(userId: string) {
+    await this.verification(userId);
+    return this.repository.currentAvailability(userId);
   }
   /** UC-TRA-03: enabled, available and recently located carriers around a point. */
   async nearby(latitude: number, longitude: number, radiusKm = 15, limit = 30) {

@@ -12,7 +12,7 @@ describe('Transport read use cases',()=>{
      const offer=TransportOffer.create({id,requestId:request.props.id,carrierId:'carrier',price:Money.create(amount,currency),validUntil:new Date(Date.now()+3600000)});
      offer.submit();if(id==='withdrawn')offer.withdraw();await offers.save(offer);
    }
-   const query=new TransportQueries(requests,offers,{verification:async()=>undefined,saveVehicle:jest.fn(),availability:jest.fn(),updateLocation:jest.fn(),nearby:jest.fn()},{history:jest.fn()});
+   const query=new TransportQueries(requests,offers,{verification:async()=>undefined,saveVehicle:jest.fn(),availability:jest.fn(),updateLocation:jest.fn(),nearby:jest.fn(),currentAvailability:jest.fn()},{history:jest.fn(),requests:jest.fn()});
    expect((await query.compare(request.props.id,'owner')).map(o=>o.id)).toEqual(['cheap','expensive','usd']);
    await expect(query.compare(request.props.id,'foreign')).rejects.toThrow('owner');
    await expect(query.carrierRequest(request.props.id,'pending')).rejects.toThrow('enabled');

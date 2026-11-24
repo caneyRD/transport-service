@@ -1,6 +1,8 @@
 import { TripOperationsHandler } from '../../application/transport/trip-operations';
 import { TransportExceptionType } from '../../domain/transport/transport-exception';
 import { TransportQueries } from '../../application/transport/transport-queries';
+import { CarrierRequestsHandler } from '../../application/transport/carrier-requests';
+import { ViewReceivedOffersHandler } from '../../application/transport/view-received-offers';
 import { ReviseRequestHandler } from '../../application/transport/revise-request';
 import { ManageFleetHandler } from '../../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../../domain/transport/vehicle';
@@ -105,6 +107,63 @@ integration('PostgreSQL transport integration', () => {
     expect((await store.execute(r=>r.fleet.verification(carrierId)))?.status).toBe('ENABLED');
     await expect(store.execute(r=>new ManageFleetHandler(r.fleet).availability(requesterId,true,start,end))).rejects.toThrow('enabled');
     await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,start,end));
+  });
+  it('full cycle: carrier sees nearby open request, offers, client accepts, carrier starts and tracks',async()=>{
+    const carrier=(r:Parameters<Parameters<typeof store.execute>[0]>[0])=>new CarrierRequestsHandler(r.fleet,r.requests,r.offers,r.carrierRequests);
+    const request=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute({...command(),
+      timeWindow:{startsAt:new Date(Date.now()+3600000),endsAt:new Date(Date.now()+7200000)}}));
+    const id=request.props.id;
+    // Near the pickup (18.4,-69.9) the carrier sees it; far away (Santiago) it does not
+    const near=await store.execute(r=>carrier(r).open(carrierId,18.41,-69.91,10)) as Array<{id:string;distanceKm:number;cargo:{description:string};myOffer?:unknown}>;
+    const seen=near.find(x=>x.id===id);
+    expect(seen).toMatchObject({cargo:{description:'Integration gravel'}});
+    expect(seen!.distanceKm).toBeLessThan(3); expect(seen!.myOffer).toBeUndefined();
+    expect((await store.execute(r=>carrier(r).open(carrierId,19.45,-70.69,10)) as Array<{id:string}>).some(x=>x.id===id)).toBe(false);
+    // The client never sees its own request as an offer opportunity, and cannot offer on it
+    await expect(store.execute(r=>carrier(r).open(requesterId,18.41,-69.91,10))).rejects.toThrow('enabled');
+    // Offer
+    const offer=await store.execute(r=>carrier(r).offer(carrierId,id,{amount:3500}));
+    expect(offer.currentStatus).toBe('SUBMITTED'); expect(offer.vehicleId).toBe(vehicleId);
+    expect((await store.execute(r=>r.requests.findById(id)))!.currentStatus).toBe('OFFERED');
+    await expect(store.execute(r=>carrier(r).offer(carrierId,id,{amount:3000}))).rejects.toThrow('already');
+    const again=await store.execute(r=>carrier(r).open(carrierId,18.41,-69.91,10)) as Array<{id:string;myOffer?:{amount:number;status:string}}>;
+    expect(again.find(x=>x.id===id)!.myOffer).toMatchObject({amount:3500,status:'SUBMITTED'});
+    // Client sees and accepts it
+    const received=await store.execute(r=>new ViewReceivedOffersHandler(r.requests,r.offers).execute({requestId:id,requesterId}));
+    expect(received.map(o=>o.id)).toContain(offer.id);
+    await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:id,requesterId,offerId:offer.id}));
+    expect((await store.execute(r=>carrier(r).open(carrierId,18.41,-69.91,10)) as Array<{id:string}>).some(x=>x.id===id)).toBe(false);
+    let mine=(await store.execute(r=>carrier(r).myOffers(carrierId)) as Array<{id:string;status:string;requestStatus:string;tripId?:string}>).find(o=>o.id===offer.id)!;
+    expect(mine).toMatchObject({status:'ACCEPTED',requestStatus:'ASSIGNED'}); expect(mine.tripId).toBeUndefined();
+    // Carrier starts the trip and sends GPS; the client sees it live
+    const trip=await store.execute(r=>new TripOperationsHandler(r.operations).start(id,carrierId)) as {id:string};
+    await store.execute(r=>new TripOperationsHandler(r.operations).track(trip.id,carrierId,{latitude:18.42,longitude:-69.92,recordedAt:new Date(),sourcePointId:'gps-1'}));
+    const live=await store.execute(r=>r.tracking.findLiveByRequestId(id));
+    expect(live.length).toBe(1);
+    mine=(await store.execute(r=>carrier(r).myOffers(carrierId)) as Array<{id:string;status:string;requestStatus:string;tripId?:string;tripStatus?:string}>).find(o=>o.id===offer.id)!;
+    expect(mine).toMatchObject({requestStatus:'IN_PROGRESS',tripId:trip.id,tripStatus:'IN_PROGRESS'});
+    // Release the carrier for later tests
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:id,requesterId}));
+  });
+  it('reports the current availability window, unavailable winning over available',async()=>{
+    const now=Date.now();
+    const fleet=(f:(h:ManageFleetHandler)=>Promise<unknown>)=>store.execute(r=>f(new ManageFleetHandler(r.fleet)));
+    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    expect(await fleet(h=>h.currentAvailability(carrierId))).toMatchObject({available:true});
+    await fleet(h=>h.availability(carrierId,false,new Date(now-1000),new Date(now+3600000)));
+    expect(await fleet(h=>h.currentAvailability(carrierId))).toMatchObject({available:false});
+    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+  });
+  it('lists the client own requests, newest first, even before a carrier is assigned',async()=>{
+    const created=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(command()));
+    const list=await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,100,0)) as Array<{id:string;timeWindow:{startsAt:Date}}>;
+    const mine=list.find(x=>x.id===created.props.id);
+    expect(mine).toMatchObject({status:'OPEN',cargo:{description:'Integration gravel',weightKg:1200,volumeM3:2},
+      origin:{address:'Origin',latitude:18.4,longitude:-69.9},destination:{address:'Destination',latitude:18.5,longitude:-70}});
+    expect(new Date(mine!.timeWindow.startsAt).toISOString()).toBe('2030-01-01T10:00:00.000Z');
+    expect(list[0].id).toBe(created.props.id);
+    const others=await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(carrierId,100,0)) as Array<{id:string}>;
+    expect(others.some(x=>x.id===created.props.id)).toBe(false);
   });
   it('locates available carriers nearby, hides identities and excludes offline, far, unavailable or pending ones',async()=>{
     const fleet=(f:(h:ManageFleetHandler)=>Promise<unknown>)=>store.execute(r=>f(new ManageFleetHandler(r.fleet)));

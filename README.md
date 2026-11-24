@@ -108,3 +108,16 @@ Resultado al 14 noviembre 2026: 35 de 95 casos calendarizados de Transporte impl
 - `PUT /carriers/me/location` con `latitude`, `longitude` y `recordedAt` ISO opcional (por defecto, ahora). El transportista la envía cada 10–15 s mientras está disponible. Guarda la última posición en `perfil_transportista.ultima_latitud/ultima_longitud/ultima_ubicacion_en` (columnas ya existentes del esquema compartido; sin migraciones). Rechaza coordenadas fuera de rango, fechas futuras o de hace más de 10 minutos, e ignora reportes fuera de orden.
 - `GET /carriers/nearby?latitude=&longitude=&radiusKm=15&limit=30` (máximo 50 km y 50 resultados). Devuelve transportistas **habilitados**, con un vehículo habilitado, disponibles ahora (ventana `disponible` o `perfil.disponible`), sin ventana `no_disponible` vigente, sin asignación activa y con ubicación de los últimos 5 minutos. Ordenado por distancia (Haversine).
 - Privacidad: posiciones redondeadas a ~110 m y un `id` opaco que cambia cada día; nunca incluye usuario, nombre, placa ni teléfono.
+
+### Mis solicitudes (cliente)
+
+`GET /transport-requests?limit=25&offset=0` devuelve las solicitudes del cliente autenticado, más recientes primero (máximo 100 por página), incluidas las que aún no tienen transportista: id, estado, carga, origen, destino, ventana y fecha de creación. `/trips/history` sigue devolviendo solo viajes.
+
+### Transportista: ver solicitudes y ofertar
+
+Requieren transportista **habilitado** (si no, 409).
+
+- `GET /carrier/requests/open?latitude=&longitude=&radiusKm=30&limit=30` (radio máximo 100 km): solicitudes `OPEN`, `MATCHING` u `OFFERED` cuya recogida está dentro del radio y cuya ventana no ha vencido, más cercanas primero. Nunca incluye las del propio transportista ni datos personales del cliente. Si ya ofertó, trae `myOffer`.
+- `POST /carrier/requests/:id/offers` con `amount` (DOP por defecto), `currency`, `validUntil` (por defecto 24 h, máximo 7 días) y `vehicleId` opcionales (por defecto, su vehículo habilitado de mayor capacidad). Crea la oferta `SUBMITTED` y pasa la solicitud a `OFFERED` en la misma transacción. Una sola oferta vigente por transportista y solicitud (409). El cliente la ve en `GET /transport-requests/:id/offers` y la acepta con el endpoint existente.
+- `GET /carrier/offers?limit=30`: ofertas del transportista con el estado de la solicitud y, si ya inició, `tripId` (para `POST /trips/:id/tracking`).
+- `GET /carriers/me/availability`: ventana de disponibilidad vigente (`available`, `startsAt`, `endsAt`); una ventana `no_disponible` prevalece.

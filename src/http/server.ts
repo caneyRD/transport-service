@@ -5,6 +5,7 @@ import { ReviseRequestHandler, ReviseRequest } from '../application/transport/re
 import { FleetRepository, ManageFleetHandler } from '../application/transport/manage-fleet';
 import { VehicleBodyType, VehicleCapacityUnit } from '../domain/transport/vehicle';
 import { CarrierRepository, RegisterCarrierHandler } from '../application/transport/register-carrier';
+import { CarrierRequestRepository, CarrierRequestsHandler } from '../application/transport/carrier-requests';
 import { createServer, IncomingMessage } from 'node:http';
 import { CreateTransportRequestHandler } from '../application/transport/create-transport-request';
 import { SelectCargoTypeHandler } from '../application/transport/select-cargo-type';
@@ -33,6 +34,7 @@ export interface Repositories {
   offers: TransportOfferRepository;
   candidates: MatchingCandidateRepository;
   tracking: { findLiveByRequestId(requestId: string): Promise<unknown[]> };
+  carrierRequests: CarrierRequestRepository;
 }
 export interface TransportStore {
   execute<T>(action: (repositories: Repositories) => Promise<T>): Promise<T>;
@@ -114,6 +116,11 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const offset=url.searchParams.has('offset') ? Number(url.searchParams.get('offset')) : 0;
         send(200,await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).history(requesterId,limit,offset))); return;
       }
+      if (url.pathname === '/transport-requests' && request.method === 'GET') {
+        const limit=url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 25;
+        const offset=url.searchParams.has('offset') ? Number(url.searchParams.get('offset')) : 0;
+        send(200,await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,limit,offset))); return;
+      }
       const fleetParts = url.pathname.split('/').filter(Boolean);
       if(fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && fleetParts[3]==='start' && request.method==='POST') {
         await readBody(request);
@@ -136,6 +143,27 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const body=await readBody(request);
         if (typeof body.available !== 'boolean') throw new HttpError(400,'available must be boolean');
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).availability(requesterId,body.available as boolean,date(body.startsAt,'startsAt'),date(body.endsAt,'endsAt')))); return;
+      }
+      if (url.pathname === '/carriers/me/availability' && request.method === 'GET') {
+        send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).currentAvailability(requesterId))); return;
+      }
+      if (url.pathname === '/carrier/requests/open' && request.method === 'GET') {
+        const query=(name:string)=>{ const raw=url.searchParams.get(name); return raw===null ? undefined : number(raw.trim()==='' ? NaN : Number(raw), name); };
+        const latitude=query('latitude'), longitude=query('longitude');
+        if (latitude===undefined || longitude===undefined) throw new HttpError(400,'latitude and longitude are required');
+        send(200, await store.execute(r => new CarrierRequestsHandler(r.fleet,r.requests,r.offers,r.carrierRequests).open(requesterId,latitude,longitude,query('radiusKm'),query('limit')))); return;
+      }
+      if (url.pathname === '/carrier/offers' && request.method === 'GET') {
+        const limit=url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 30;
+        send(200, await store.execute(r => new CarrierRequestsHandler(r.fleet,r.requests,r.offers,r.carrierRequests).myOffers(requesterId,limit))); return;
+      }
+      if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && fleetParts[3]==='offers' && request.method==='POST') {
+        const body=await readBody(request);
+        const offer=await store.execute(r => new CarrierRequestsHandler(r.fleet,r.requests,r.offers,r.carrierRequests).offer(requesterId,fleetParts[2],{
+          amount:number(body.amount,'amount'), currency:body.currency===undefined ? undefined : text(body.currency,'currency'),
+          validUntil:body.validUntil===undefined ? undefined : date(body.validUntil,'validUntil'),
+          vehicleId:body.vehicleId===undefined ? undefined : text(body.vehicleId,'vehicleId') }));
+        send(201, offerDto(offer)); return;
       }
       if (url.pathname === '/carriers/me/location' && request.method === 'PUT') {
         const body=await readBody(request);

@@ -92,4 +92,14 @@ export class PostgresFleetRepository implements FleetRepository {
     return result.rows.map(r=>({ id: r.token, latitude: r.lat, longitude: r.lng, distanceKm: r.km,
       bodyType: r.body_type, capacityValue: r.capacity_value ?? r.capacidad, capacityUnit: r.capacity_unit, updatedAt: r.located_at }));
   }
+  async currentAvailability(userId: string) {
+    // Same rule as matching: an UNAVAILABLE window wins over an AVAILABLE one.
+    const result=await this.client.query(`SELECT a.estado, a.desde, a.hasta FROM baney.disponibilidad_transportista a
+      JOIN baney.perfil_transportista p ON p.id=a.perfil_transportista_id
+      WHERE p.usuario_uid=$1 AND p.eliminado_en IS NULL AND a.desde<=now() AND a.hasta>now()
+      ORDER BY (a.estado='no_disponible') DESC, a.desde DESC LIMIT 1`,[userId]);
+    const row=result.rows[0];
+    if (!row) return { available: false };
+    return { available: row.status === 'AVAILABLE', startsAt: row.starts_at, endsAt: row.ends_at };
+  }
 }
