@@ -148,27 +148,27 @@ integration('PostgreSQL transport integration', () => {
   it('reports the current availability window, unavailable winning over available',async()=>{
     const now=Date.now();
     const fleet=(f:(h:ManageFleetHandler)=>Promise<unknown>)=>store.execute(r=>f(new ManageFleetHandler(r.fleet)));
-    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
     expect(await fleet(h=>h.currentAvailability(carrierId))).toMatchObject({available:true});
-    await fleet(h=>h.availability(carrierId,false,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,false,new Date(now-3600000),new Date(now+3600000)));
     expect(await fleet(h=>h.currentAvailability(carrierId))).toMatchObject({available:false});
-    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
   });
   it('lists the client own requests, newest first, even before a carrier is assigned',async()=>{
     const created=await store.execute(r=>new CreateTransportRequestHandler(r.requests).execute(command()));
-    const list=await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,100,0)) as Array<{id:string;timeWindow:{startsAt:Date}}>;
+    const list=await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,100,0)) as Array<{id:string;createdAt:Date;timeWindow:{startsAt:Date}}>;
     const mine=list.find(x=>x.id===created.props.id);
     expect(mine).toMatchObject({status:'OPEN',cargo:{description:'Integration gravel',weightKg:1200,volumeM3:2},
       origin:{address:'Origin',latitude:18.4,longitude:-69.9},destination:{address:'Destination',latitude:18.5,longitude:-70}});
     expect(new Date(mine!.timeWindow.startsAt).toISOString()).toBe('2030-01-01T10:00:00.000Z');
-    expect(list[0].id).toBe(created.props.id);
+    expect(list.every((x,k)=>k===0 || new Date(list[k-1].createdAt)>=new Date(x.createdAt))).toBe(true);
     const others=await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(carrierId,100,0)) as Array<{id:string}>;
     expect(others.some(x=>x.id===created.props.id)).toBe(false);
   });
   it('locates available carriers nearby, hides identities and excludes offline, far, unavailable or pending ones',async()=>{
     const fleet=(f:(h:ManageFleetHandler)=>Promise<unknown>)=>store.execute(r=>f(new ManageFleetHandler(r.fleet)));
     const now=Date.now();
-    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
     await fleet(h=>h.updateLocation(carrierId,{latitude:18.48612,longitude:-69.93118,recordedAt:new Date(now)}));
     // An older, out-of-order report does not move the carrier back
     const kept=await fleet(h=>h.updateLocation(carrierId,{latitude:18.9,longitude:-70.5,recordedAt:new Date(now-60_000)})) as {latitude:number};
@@ -181,9 +181,9 @@ integration('PostgreSQL transport integration', () => {
     // Too far for the radius
     expect((await fleet(h=>h.nearby(19.45,-70.69,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
     // Unavailable now
-    await fleet(h=>h.availability(carrierId,false,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,false,new Date(now-3600000),new Date(now+3600000)));
     expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
-    await fleet(h=>h.availability(carrierId,true,new Date(now-1000),new Date(now+3600000)));
+    await fleet(h=>h.availability(carrierId,true,new Date(now-3600000),new Date(now+3600000)));
     // Stale position (offline phone)
     await client.query("UPDATE baney.perfil_transportista SET ultima_ubicacion_en=now()-interval '10 minutes' WHERE id=$1",[driverId]);
     expect((await fleet(h=>h.nearby(18.47,-69.93,5)) as unknown[]).some(c=>(c as {id:unknown}).id===mine!.id)).toBe(false);
