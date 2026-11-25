@@ -28,6 +28,7 @@ import { CargoType } from '../../domain/transport/cargo';
 import { TransportOffer, TransportOfferStatus } from '../../domain/transport/transport-offer';
 import { Money } from '../../domain/transport/value-objects/money';
 import { TransportRequestStatus } from '../../domain/transport/transport-request';
+import { CarrierRouteHandler } from '../../application/transport/carrier-route';
 
 // Explicit opt-in. All fixtures and operations remain in one outer transaction,
 // rolled back even after a failed assertion. No cleanup DELETE touches shared data.
@@ -243,6 +244,31 @@ integration('PostgreSQL transport integration', () => {
     await expect(store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).carrierRequest(request.props.id,requesterId))).rejects.toThrow('enabled');
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
     await expect(store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).route(request.props.id,carrierId))).rejects.toThrow('available');
+  });
+  it('carrier map: previews an open request from my GPS, then the assigned carrier gets the ETA to the pickup and, once loaded, to the destination',async()=>{
+    const {request,offer}=await offeredRequest();
+    const handler=(r:Parameters<Parameters<typeof store.execute>[0]>[0])=>new CarrierRouteHandler(r.fleet,r.requests,r.carrierRequests);
+    const me={latitude:18.35,longitude:-69.95};
+    const preview=await store.execute(r=>handler(r).preview(carrierId,request.props.id,me));
+    expect(preview).toMatchObject({origin:{address:'Origin'},destination:{address:'Destination'},provider:'GEODESIC_ESTIMATE'});
+    expect(preview.distanceKm).toBeGreaterThan(0);
+    expect(preview.toPickup!.distanceKm).toBeGreaterThan(0);
+    // The client is not a carrier; nobody but the assigned carrier gets an ETA
+    await expect(store.execute(r=>handler(r).preview(requesterId,request.props.id))).rejects.toThrow('enabled carrier');
+    await expect(store.execute(r=>handler(r).eta(carrierId,request.props.id,me))).rejects.toThrow('assigned carrier');
+    await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:offer.id}));
+    expect(await store.execute(r=>r.carrierRequests.assignedTripState(carrierId,request.props.id))).toBeNull();
+    expect(await store.execute(r=>handler(r).eta(carrierId,request.props.id,me))).toMatchObject({from:'TRUCK',leg:'PICKUP'});
+    const trip=await store.execute(r=>new TripOperationsHandler(r.operations).confirm(request.props.id,carrierId)) as {id:string};
+    await store.execute(r=>new TripOperationsHandler(r.operations).start(request.props.id,carrierId));
+    expect(await store.execute(r=>r.carrierRequests.assignedTripState(carrierId,request.props.id))).toBe('en_transito');
+    const delivering=await store.execute(r=>handler(r).eta(carrierId,request.props.id,me));
+    expect(delivering).toMatchObject({from:'TRUCK',leg:'DELIVERY'});
+    // Without GPS: the whole route, from the origin
+    expect(await store.execute(r=>handler(r).eta(carrierId,request.props.id))).toMatchObject({from:'ORIGIN',leg:'DELIVERY'});
+    // Assigned (no longer open) requests stay visible on my map
+    expect((await store.execute(r=>handler(r).preview(carrierId,request.props.id))).origin.address).toBe('Origin');
+    await deliver(trip.id);
   });
   it('starts the assigned trip, tracks GPS idempotently and persists incidents with outbox atomically',async()=>{
     const {request,offer}=await offeredRequest();
@@ -779,6 +805,23 @@ integration('PostgreSQL transport integration', () => {
     expect(await store.execute(r=>r.requests.isExpired!(stale.props.id))).toBe(true);
     expect(await store.execute(r=>r.requests.expireStale!())).toEqual([]);
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:assigned.props.id,requesterId}));
-    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:fresh.props.id,requesterId}));
+        await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:fresh.props.id,requesterId}));
+  });
+  it('a request that cannot be expired is skipped and logged: listing still works and the rest expire',async()=>{
+    const make=()=>store.execute(r=>new CreateTransportRequestHandler(r.requests).execute({...command(),timeWindow:{startsAt:new Date(Date.now()+60000),endsAt:new Date(Date.now()+7200000)}}));
+    const broken=await make(), ok=await make();
+    await client.query(`UPDATE baney.solicitud_transporte SET ventana_recogida_desde=now()-interval '26 hours',ventana_recogida_hasta=now()-interval '24 hours' WHERE id = ANY($1::uuid[])`,[[broken.props.id,ok.props.id]]);
+    // Simulates a production schema that rejects closing one of them
+    await client.query(`ALTER TABLE baney.solicitud_transporte ADD CONSTRAINT tmp_no_cerrar CHECK (id<>'${broken.props.id}'::uuid OR estado<>'cancelada') NOT VALID`);
+    const log=jest.spyOn(console,'error').mockImplementation(()=>undefined);
+    const expired=await store.execute(r=>r.requests.expireStale!(requesterId));
+    expect(expired).toContain(ok.props.id);
+    expect(expired).not.toContain(broken.props.id);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`could not expire request ${broken.props.id}`));
+    const mine=await store.execute(r=>r.tripHistory.requests(requesterId,100,0)) as Array<{id:string;status:string}>;
+    expect(mine.find(x=>x.id===broken.props.id)?.status).not.toBe('CANCELLED');
+    log.mockRestore();
+    await client.query('ALTER TABLE baney.solicitud_transporte DROP CONSTRAINT tmp_no_cerrar');
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:broken.props.id,requesterId}));
   });
 });

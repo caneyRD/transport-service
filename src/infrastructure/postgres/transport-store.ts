@@ -167,8 +167,23 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
       ORDER BY ventana_recogida_hasta LIMIT $2 FOR UPDATE SKIP LOCKED`, [requesterId ?? null, limit, new Date()]);
     const expired: string[] = [];
     for (const row of stale.rows) {
-      const request = await this.findById(row.id);
-      if (!request?.isStale()) continue;
+      // Each request expires on its own savepoint: one that cannot be closed is logged and skipped,
+      // so listing requests (which expires first) never fails because of it.
+      await this.client.query('SAVEPOINT expire_request');
+      try {
+        if (await this.expireOne(row.id)) expired.push(row.id);
+        await this.client.query('RELEASE SAVEPOINT expire_request');
+      } catch (error) {
+        await this.client.query('ROLLBACK TO SAVEPOINT expire_request');
+        console.error(`[transport] could not expire request ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return expired;
+  }
+  private async expireOne(id: string): Promise<boolean> {
+    {
+      const request = await this.findById(id);
+      if (!request?.isStale()) return false;
       request.expire();
       await this.save(request);
       await this.client.query(`UPDATE baney.solicitud_transporte SET motivo_cancelacion=$2 WHERE id=$1`, [request.props.id, EXPIRED_REASON]);
@@ -176,9 +191,8 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
       await this.client.query(`INSERT INTO baney.notificacion(usuario_uid,categoria,plantilla_codigo,titulo,cuerpo,carga,idempotency_key)
         VALUES($1,'cancelacion','request_expired','Tu solicitud venció',$2,jsonb_build_object('requestId',$3::text),$4) ON CONFLICT (idempotency_key) DO NOTHING`,
         [request.props.requesterId, `Ningún transportista tomó tu solicitud hacia ${request.props.destination.address} antes de la hora de recogida. Puedes crearla de nuevo.`, request.props.id, `request-expired:${request.props.id}`]);
-      expired.push(request.props.id);
+      return true;
     }
-    return expired;
   }
   async isExpired(requestId: string): Promise<boolean> {
     const r = await this.client.query(`SELECT motivo_cancelacion AS "cancelReason" FROM baney.solicitud_transporte WHERE id=$1`, [requestId]);

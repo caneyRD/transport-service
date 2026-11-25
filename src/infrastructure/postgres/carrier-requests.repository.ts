@@ -79,6 +79,17 @@ export class PostgresCarrierRequestRepository implements CarrierRequestRepositor
     }));
   }
 
+  async assignedTripState(carrierUserId: string, requestId: string): Promise<string | null | undefined> {
+    const result = await this.client.query(`SELECT t.estado AS "tripState"
+        FROM baney.solicitud_transporte r
+        JOIN baney.asignacion a ON a.id = r.asignacion_activa_id AND a.solicitud_id = r.id AND a.estado = 'activa' AND a.eliminado_en IS NULL
+        JOIN baney.perfil_transportista p ON p.id = a.perfil_transportista_id AND p.eliminado_en IS NULL
+        LEFT JOIN LATERAL (SELECT estado FROM baney.viaje WHERE asignacion_id = a.id AND eliminado_en IS NULL ORDER BY creado_en DESC LIMIT 1) t ON true
+       WHERE r.id = $1 AND p.usuario_uid = $2 AND r.eliminado_en IS NULL`, [requestId, carrierUserId]);
+    if (!result.rows[0]) return undefined;
+    return result.rows[0].tripState ?? null;
+  }
+
   async reject(carrierUserId: string, requestId: string, reason: string) {
     // Nothing creates candidates yet: the rejection creates (or updates) this carrier's candidate row,
     // using its largest enabled vehicle, so the request stops appearing in its open list.

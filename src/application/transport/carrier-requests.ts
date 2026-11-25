@@ -32,6 +32,8 @@ export interface CarrierRequestRepository {
   reject?(carrierUserId: string, requestId: string, reason: string): Promise<unknown>;
   publishBackhaul?(carrierUserId: string, input: BackhaulInput): Promise<unknown>;
   backhaulsOf?(carrierUserId: string): Promise<unknown[]>;
+  /** Trip state if this carrier holds the request's active assignment (null: no trip yet); undefined otherwise. */
+  assignedTripState?(carrierUserId: string, requestId: string): Promise<string | null | undefined>;
 }
 export interface BackhaulInput { vehicleId: string; origin: { address: string; latitude: number; longitude: number }; destination: { address: string; latitude: number; longitude: number }; availableFrom: Date; availableTo: Date; capacityKg: number; }
 

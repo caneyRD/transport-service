@@ -25,6 +25,7 @@ import { TransportRequest } from '../domain/transport/transport-request';
 import { TransportOffer } from '../domain/transport/transport-offer';
 import { CargoType } from '../domain/transport/cargo';
 import { openApiDocument, swaggerHtml } from './openapi';
+import { CarrierRouteHandler } from '../application/transport/carrier-route';
 import { Authenticate, HttpError } from './auth';
 import { CarrierDocumentContentType, CarrierDocumentType, CarrierDocumentsHandler } from '../application/transport/carrier-documents';
 import { CarrierApprovalHandler, REVIEWER_ROLES, ReviewerRequiredError } from '../application/transport/carrier-approval';
@@ -406,7 +407,15 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         if (latitude===undefined || longitude===undefined) throw new HttpError(400,'latitude and longitude are required');
         send(200, await store.execute(({fleet}) => new ManageFleetHandler(fleet).nearby(latitude,longitude,query('radiusKm'),query('limit')))); return;
       }
-      if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['cargo','route','distance'].includes(fleetParts[3]) && request.method==='GET') {
+      // Carrier map: my GPS → pickup → destination (preview of open requests, or my assigned one) and the trip ETA.
+      if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['route','eta'].includes(fleetParts[3]) && request.method==='GET') {
+        const coordinate=(name:string)=>{ const raw=url.searchParams.get(name); return raw===null ? undefined : number(raw.trim()==='' ? NaN : Number(raw), name); };
+        const latitude=coordinate('latitude'), longitude=coordinate('longitude');
+        if ((latitude===undefined)!==(longitude===undefined)) throw new HttpError(400,'latitude and longitude go together');
+        const from=latitude!==undefined && longitude!==undefined ? {latitude,longitude} : undefined;
+        send(200,await store.execute(r=>{ const handler=new CarrierRouteHandler(r.fleet,r.requests,r.carrierRequests,routes); return fleetParts[3]==='eta' ? handler.eta(requesterId,fleetParts[2],from) as Promise<unknown> : handler.preview(requesterId,fleetParts[2],from); })); return;
+      }
+      if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['cargo','distance'].includes(fleetParts[3]) && request.method==='GET') {
         const data=await store.execute(async r=>{
           const queries=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory,routes);
           if(fleetParts[3]==='cargo') {
