@@ -26,7 +26,7 @@ import { TransportOffer } from '../domain/transport/transport-offer';
 import { CargoType } from '../domain/transport/cargo';
 import { openApiDocument, swaggerHtml } from './openapi';
 import { CarrierRouteHandler } from '../application/transport/carrier-route';
-import { Authenticate, HttpError } from './auth';
+import { Authenticate, AuthenticationError, HttpError } from './auth';
 import { CarrierDocumentContentType, CarrierDocumentType, CarrierDocumentsHandler } from '../application/transport/carrier-documents';
 import { CarrierApprovalHandler, REVIEWER_ROLES, ReviewerRequiredError } from '../application/transport/carrier-approval';
 import { CommissionType, TransportAdminHandler } from '../application/transport/transport-admin';
@@ -545,7 +545,13 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       });
       send(result.status, result.data);
     } catch (error) {
-      if (error instanceof HttpError) send(error.status, { message: error.message });
+      if (error instanceof AuthenticationError) {
+        // The reason helps fix the client or the configuration; the token itself is never echoed or logged.
+        console.warn(`[transport] ${request.method} ${request.url?.split('?')[0]} -> 401 (${error.reason})`);
+        response.setHeader('WWW-Authenticate', `Bearer error="invalid_token", error_description="${error.reason}"`);
+        send(401, { message: error.message, reason: error.reason, hint: error.hint });
+      }
+      else if (error instanceof HttpError) send(error.status, { message: error.message });
       else if (error instanceof ReviewerRequiredError) send(403, { message: error.message });
       else if (error instanceof DomainError && /share link/.test(error.message)) send(404, { message: error.message });
       else if (error instanceof DomainError && /not configured/.test(error.message)) send(503, { message: error.message });

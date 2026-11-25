@@ -276,9 +276,10 @@ integration('PostgreSQL transport integration', () => {
     await client.query(`UPDATE baney.vehiculo SET estado='pendiente' WHERE id=$1`,[vehicleId]);
     await expect(accept()).rejects.toThrow('the vehicle is not enabled');
     await client.query(`UPDATE baney.vehiculo SET estado='habilitado' WHERE id=$1`,[vehicleId]);
-    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(Date.now()-1000),new Date(Date.now()+3600000)));
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(Date.now()-7200000),new Date(Date.now()+3600000)));
+    // The window starts well before now(): the test transaction freezes now() at its start
     await expect(accept()).rejects.toThrow('the carrier is marked as not available');
-    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(Date.now()-1000),new Date(Date.now()+3600000)));
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(Date.now()-7200000),new Date(Date.now()+3600000)));
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
   });
   it('starts the assigned trip, tracks GPS idempotently and persists incidents with outbox atomically',async()=>{

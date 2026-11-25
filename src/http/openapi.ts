@@ -183,7 +183,7 @@ export function openApiDocument() {
     info: {
       title: 'BANEY · Transport Service',
       version: '0.1.0',
-      description: 'API del módulo de transporte de BANEY. Inicia sesión en el User Service, copia el `access_token` y pégalo en **Authorize** (sin la palabra Bearer). Las rutas de Admin exigen rol moderador o superadmin en `baney.usuario`.',
+      description: 'API del módulo de transporte de BANEY.\n\n**Token:** inicia sesión en el User Service con `POST /api/users/api/v1/auth/login?session=token` (con `session=token`; el modo por defecto, cookie, es para navegadores), copia el `access_token` de la respuesta y pégalo en **Authorize** (solo el token). Dura poco: si recibes 401 con `reason: expired`, vuelve a iniciar sesión.\n\nUn 401 trae `reason` y `hint` con la causa (expired, signature, audience…). Las rutas de Admin exigen rol moderador o superadmin en `baney.usuario`.',
     },
     servers: [{ url: '/', description: 'Este servidor' }],
     tags: tags.map((name) => ({ name })),
@@ -228,6 +228,12 @@ export const swaggerHtml = `<!doctype html>
   var base = location.origin + docs.replace(/\\/docs$/, '');
   fetch(docs + '/openapi.json').then(function (r) { return r.json(); }).then(function (spec) {
     spec.servers = [{ url: base, description: 'Este servidor' }];
-    SwaggerUIBundle({ spec: spec, dom_id: '#swagger', deepLinking: true, persistAuthorization: true, docExpansion: 'none', filter: true, tryItOutEnabled: true });
+    SwaggerUIBundle({ spec: spec, dom_id: '#swagger', deepLinking: true, persistAuthorization: true, docExpansion: 'none', filter: true, tryItOutEnabled: true,
+      // Pasted "Bearer eyJ…" or with quotes: send the bare token once.
+      requestInterceptor: function (req) {
+        var auth = req.headers && req.headers.Authorization;
+        if (auth) req.headers.Authorization = 'Bearer ' + auth.replace(/^(\\s*Bearer\\s+)+/i, '').replace(/^["']|["']$/g, '').trim();
+        return req;
+      } });
   });
 </script></body></html>`;
