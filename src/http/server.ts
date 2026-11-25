@@ -545,7 +545,12 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
         if (code === '22P02') send(400, { message: 'Invalid identifier or value' });
         else if (code === '23505' || code === '40001' || code === '40P01') send(409, { message: 'Concurrent update; retry the request' });
-        else send(500, { message: 'Internal server error' });
+        else {
+          // Unexpected failure: log the cause for the server logs (docker logs), never to the client.
+          const detail = error instanceof Error ? error.message : String(error);
+          console.error(`[transport] ${request.method} ${request.url?.split('?')[0]} -> 500${code ? ` (pg ${String(code)})` : ''}: ${detail}`);
+          send(500, { message: 'Internal server error' });
+        }
       }
     }
   });

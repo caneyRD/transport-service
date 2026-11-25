@@ -199,6 +199,17 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
   }
   /** UC-TRA-25: carriers available within 30 km of the pickup (located in the last 30 minutes) are told about a new request. */
   private async notifyNearbyCarriers(requestId:string,requesterId:string,latitude:number,longitude:number,address:string) {
+    // Best effort: a failure telling carriers must never stop the client from creating the request.
+    await this.client.query('SAVEPOINT notify_nearby_carriers');
+    try {
+      await this.insertNearbyNotifications(requestId,requesterId,latitude,longitude,address);
+      await this.client.query('RELEASE SAVEPOINT notify_nearby_carriers');
+    } catch (error) {
+      await this.client.query('ROLLBACK TO SAVEPOINT notify_nearby_carriers');
+      console.error(`[transport] nearby-carrier notification skipped for request ${requestId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  private async insertNearbyNotifications(requestId:string,requesterId:string,latitude:number,longitude:number,address:string) {
     await this.client.query(`INSERT INTO baney.notificacion(usuario_uid,categoria,plantilla_codigo,titulo,cuerpo,carga,idempotency_key)
       SELECT p.usuario_uid,'viaje','nearby_request','Nueva solicitud cerca de ti',
         'Recogida en '||$4::text||' a '||round(d.km::numeric,1)||' km.',jsonb_build_object('requestId',$1::text,'distanceKm',round(d.km::numeric,1)),
