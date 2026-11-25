@@ -194,6 +194,23 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
       return true;
     }
   }
+  /** Why the accepted offer cannot become an assignment, so the client (and support) know what to fix. */
+  private async assignmentBlocker(requestId: string): Promise<string> {
+    const r = (await this.client.query(`SELECT d.id IS NOT NULL AS "hasProfile", d.estado AS "carrierState", v.id IS NOT NULL AS "hasVehicle",
+        v.estado AS "vehicleState", v.dueno_uid = o.transportista_uid AS "ownsVehicle",
+        EXISTS (SELECT 1 FROM baney.disponibilidad_transportista a WHERE a.perfil_transportista_id=d.id AND a.desde<=now() AND a.hasta>now() AND a.estado='no_disponible') AS "unavailable"
+      FROM baney.oferta_transporte o
+      LEFT JOIN baney.perfil_transportista d ON d.usuario_uid=o.transportista_uid AND d.eliminado_en IS NULL
+      LEFT JOIN baney.vehiculo v ON v.id=o.vehiculo_id AND v.eliminado_en IS NULL
+      WHERE o.solicitud_id=$1 AND o.estado='aceptada' AND o.eliminado_en IS NULL LIMIT 1`, [requestId])).rows[0];
+    const base = 'Assignment requires an accepted offer with an enabled carrier and vehicle';
+    if (!r) return base;
+    if (!r.hasProfile || r.carrierState !== 'habilitado') return `${base}: the carrier is not enabled`;
+    if (!r.hasVehicle || !r.ownsVehicle) return `${base}: the offer has no vehicle of the carrier`;
+    if (r.vehicleState !== 'habilitado') return `${base}: the vehicle is not enabled`;
+    if (r.unavailable) return `${base}: the carrier is marked as not available`;
+    return base;
+  }
   async isExpired(requestId: string): Promise<boolean> {
     const r = await this.client.query(`SELECT motivo_cancelacion AS "cancelReason" FROM baney.solicitud_transporte WHERE id=$1`, [requestId]);
     return r.rows[0]?.cancelReason === EXPIRED_REASON;
@@ -262,7 +279,7 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
           AND NOT EXISTS (SELECT 1 FROM baney.disponibilidad_transportista a WHERE a.perfil_transportista_id=d.id AND a.desde<=now() AND a.hasta>now() AND a.estado='no_disponible')
           FOR UPDATE OF d,v`,[p.id]);
         const candidate=eligible.rows[0];
-        if (!candidate) throw new DomainError('Assignment requires an accepted offer with an enabled carrier and vehicle');
+        if (!candidate) throw new DomainError(await this.assignmentBlocker(p.id));
         const busy=await this.client.query(`SELECT id FROM baney.asignacion WHERE estado='activa' AND eliminado_en IS NULL
           AND (perfil_transportista_id=$1 OR vehiculo_id=$2)`,[candidate.driver_id,candidate.vehicle_id]);
         if (busy.rows.length) throw new DomainError('Carrier or vehicle already has an active assignment');

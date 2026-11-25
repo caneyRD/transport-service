@@ -270,6 +270,17 @@ integration('PostgreSQL transport integration', () => {
     expect((await store.execute(r=>handler(r).preview(carrierId,request.props.id))).origin.address).toBe('Origin');
     await deliver(trip.id);
   });
+  it('says why an accepted offer cannot be assigned: vehicle not enabled, carrier not available',async()=>{
+    const {request,offer}=await offeredRequest();
+    const accept=()=>store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:offer.id}));
+    await client.query(`UPDATE baney.vehiculo SET estado='pendiente' WHERE id=$1`,[vehicleId]);
+    await expect(accept()).rejects.toThrow('the vehicle is not enabled');
+    await client.query(`UPDATE baney.vehiculo SET estado='habilitado' WHERE id=$1`,[vehicleId]);
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,false,new Date(Date.now()-1000),new Date(Date.now()+3600000)));
+    await expect(accept()).rejects.toThrow('the carrier is marked as not available');
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(Date.now()-1000),new Date(Date.now()+3600000)));
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:request.props.id,requesterId}));
+  });
   it('starts the assigned trip, tracks GPS idempotently and persists incidents with outbox atomically',async()=>{
     const {request,offer}=await offeredRequest();
     await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:request.props.id,requesterId,offerId:offer.id}));
