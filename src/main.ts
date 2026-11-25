@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { PostgresTransportStore } from './infrastructure/postgres/transport-store';
 import { createTransportServer } from './http/server';
 import { jwtAuthenticator } from './http/auth';
+import { GoogleRoutesProvider } from './infrastructure/google/google-routes.provider';
 
 async function main(): Promise<void> {
   if (existsSync('.env')) process.loadEnvFile('.env');
@@ -19,12 +20,30 @@ async function main(): Promise<void> {
   const server = createTransportServer(store, jwtAuthenticator({
     publicKey: process.env.JWT_PUBLIC_KEY, secret: process.env.JWT_SECRET,
     issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE,
-  }), { shareSecret: process.env.SHARE_LINK_SECRET });
+  }), {
+    shareSecret: process.env.SHARE_LINK_SECRET,
+    // Swagger UI at /docs; set DOCS_ENABLED=false to hide it.
+    docs: process.env.DOCS_ENABLED !== 'false',
+    // Real driving routes and ETA when the key is set; otherwise straight-line estimates.
+    routes: process.env.GOOGLE_MAPS_API_KEY
+      ? new GoogleRoutesProvider(process.env.GOOGLE_MAPS_API_KEY, fetch, { onError: reason => console.warn(`Google Routes unavailable, using estimate: ${reason}`) })
+      : undefined,
+  });
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
-  server.on('error', () => { console.error('HTTP server failed'); void store.close(); process.exitCode = 1; });
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(error.code === 'EADDRINUSE' ? `HTTP server failed: port ${port} is already in use (another process is listening on it)` : `HTTP server failed: ${error.code ?? 'unknown error'}`);
+    void store.close(); process.exitCode = 1;
+  });
   server.listen(port, () => console.log(`transport-service listening on port ${port}`));
-  const shutdown = () => server.close(() => { void store.close(); });
+  // Every 5 minutes, close the requests nobody took before their pickup window ended.
+  const sweep = setInterval(() => {
+    store.execute(r => r.requests.expireStale ? r.requests.expireStale() : Promise.resolve([] as string[]))
+      .then(ids => { if (ids.length) console.log(`expired ${ids.length} transport request(s)`); })
+      .catch(() => console.error('Expiring stale requests failed'));
+  }, 5 * 60_000);
+  sweep.unref();
+  const shutdown = () => { clearInterval(sweep); server.close(() => { void store.close(); }); };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
 }

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { DomainError } from '../../domain/shared/domain-error';
+import { GeodesicRouteProvider, RouteProvider } from './ports/route-provider';
 
 /** A commission rule as stored (UC-TRA-42); applied to a gross amount. */
 export interface CommissionTerms { percentage: number; fixedAmount: number; minimum?: number; maximum?: number }
@@ -24,17 +25,11 @@ export interface ClientServicesRepository {
   sharedTrip(tripId: string): Promise<unknown>;
 }
 
-const EARTH_RADIUS_KM = 6371;
-function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
-  const rad = (v: number) => v * Math.PI / 180;
-  const h = Math.sin(rad(b.latitude - a.latitude) / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(rad(b.longitude - a.longitude) / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
 const round = (n: number) => Math.round(n * 100) / 100;
 const SHARE_HOURS = 12;
 
 export class ClientServicesHandler {
-  constructor(private readonly repository: ClientServicesRepository, private readonly shareSecret?: string) {}
+  constructor(private readonly repository: ClientServicesRepository, private readonly shareSecret?: string, private readonly routes: RouteProvider = new GeodesicRouteProvider()) {}
 
   /** UC-TRA-72/73/155: suggested price with its breakdown, before publishing. */
   async priceEstimate(input: PriceEstimateInput) {
@@ -44,14 +39,16 @@ export class ClientServicesHandler {
     if (input.weightKg !== undefined && (!Number.isFinite(input.weightKg) || input.weightKg <= 0)) throw new DomainError('Weight must be positive');
     const rule = await this.repository.priceRule(input.vehicleType, input.cargoType);
     if (!rule) throw new DomainError('No active price rule');
-    const km = Math.max(Number(distanceKm(input.origin, input.destination).toFixed(1)), 0.1);
+    // Road distance when the routing provider is configured (UC-TRA-72): the price follows the real route.
+    const plan = await this.routes.plan(input.origin, input.destination);
+    const km = Math.max(Number(plan.distanceKm.toFixed(1)), 0.1);
     const tons = (input.weightKg ?? 0) / 1000;
     const distanceCharge = round(km * rule.pricePerKm), weightCharge = round(tons * rule.pricePerTon);
     const subtotal = round(rule.basePrice + distanceCharge + weightCharge);
     const estimated = Math.max(subtotal, rule.minimum);
     const terms = await this.repository.commissionTerms(rule.currency);
     const commission = terms ? commissionFor(terms, estimated) : 0;
-    return { ruleId: rule.id, currency: rule.currency, distanceKm: km, estimatedDurationMinutes: Math.max(1, Math.ceil(km / 40 * 60)),
+    return { ruleId: rule.id, currency: rule.currency, distanceKm: km, estimatedDurationMinutes: plan.durationMinutes, routeProvider: plan.provider,
       breakdown: { base: rule.basePrice, distance: distanceCharge, weight: weightCharge, minimumApplied: estimated > subtotal },
       estimated, commission, carrierPayout: round(estimated - commission) };
   }

@@ -95,7 +95,7 @@ export class PostgresTrackingRepository {
   constructor(private readonly client: PoolClient) {}
   async findLiveByRequestId(requestId: string): Promise<unknown[]> {
     const result = await this.client.query(`SELECT p.id, p.viaje_id AS "tripId", p.latitud, p.longitud,
-        p.registrado_en AS "recordedAt", p.origen_actor
+        p.registrado_en AS "recordedAt", p.origen_actor, t.estado AS "tripState"
       FROM baney.punto_rastreo p JOIN baney.viaje t ON t.id=p.viaje_id
       WHERE t.solicitud_id=$1 AND t.estado NOT IN ('programado','entregado','cancelado') AND t.eliminado_en IS NULL
       ORDER BY p.registrado_en DESC, p.id DESC`, [requestId]);
@@ -134,6 +134,9 @@ class TransactionEvents {
   committed(): void { this.aggregates.forEach(a => a.pullDomainEvents()); }
 }
 
+/** Reason stored on requests closed because nobody took them in time. */
+export const EXPIRED_REASON = 'Vencida: ningún transportista la tomó antes de la hora de recogida';
+
 export class PostgresTransportRequestRepository implements TransportRequestRepository {
   private readonly versions = new WeakMap<TransportRequest, number>();
   constructor(private readonly client: PoolClient, private readonly events: TransactionEvents) {}
@@ -152,6 +155,34 @@ export class PostgresTransportRequestRepository implements TransportRequestRepos
     r.status as TransportRequestStatus,r.aggregate_version,r.active_assignment_id ?? undefined);
     this.versions.set(request,r.row_version);
     return request;
+  }
+  /**
+   * Requests nobody took before the end of their pickup window are closed as "Vencida": the request is
+   * cancelled (domain event TransportRequestExpired), pending offers expire and the client is told.
+   */
+  async expireStale(requesterId?: string, limit = 200): Promise<string[]> {
+    const stale = await this.client.query(`SELECT id FROM baney.solicitud_transporte
+      WHERE estado IN ('borrador','abierta','en_matching','con_ofertas') AND ventana_recogida_hasta <= $3::timestamptz AND eliminado_en IS NULL
+        AND ($1::uuid IS NULL OR solicitante_uid=$1::uuid)
+      ORDER BY ventana_recogida_hasta LIMIT $2 FOR UPDATE SKIP LOCKED`, [requesterId ?? null, limit, new Date()]);
+    const expired: string[] = [];
+    for (const row of stale.rows) {
+      const request = await this.findById(row.id);
+      if (!request?.isStale()) continue;
+      request.expire();
+      await this.save(request);
+      await this.client.query(`UPDATE baney.solicitud_transporte SET motivo_cancelacion=$2 WHERE id=$1`, [request.props.id, EXPIRED_REASON]);
+      await this.client.query(`UPDATE baney.oferta_transporte SET estado='expirada',actualizado_en=now() WHERE solicitud_id=$1 AND estado='enviada' AND eliminado_en IS NULL`, [request.props.id]);
+      await this.client.query(`INSERT INTO baney.notificacion(usuario_uid,categoria,plantilla_codigo,titulo,cuerpo,carga,idempotency_key)
+        VALUES($1,'cancelacion','request_expired','Tu solicitud venció',$2,jsonb_build_object('requestId',$3::text),$4) ON CONFLICT (idempotency_key) DO NOTHING`,
+        [request.props.requesterId, `Ningún transportista tomó tu solicitud hacia ${request.props.destination.address} antes de la hora de recogida. Puedes crearla de nuevo.`, request.props.id, `request-expired:${request.props.id}`]);
+      expired.push(request.props.id);
+    }
+    return expired;
+  }
+  async isExpired(requestId: string): Promise<boolean> {
+    const r = await this.client.query(`SELECT motivo_cancelacion AS "cancelReason" FROM baney.solicitud_transporte WHERE id=$1`, [requestId]);
+    return r.rows[0]?.cancelReason === EXPIRED_REASON;
   }
   async findById(id: string): Promise<TransportRequest | undefined> {
     const result = await this.client.query(`SELECT r.*, c.descripcion,c.tipo_carga,c.peso_kg,c.volumen_m3

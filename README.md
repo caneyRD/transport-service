@@ -69,7 +69,7 @@ npm test
 npm run build
 ```
 
-La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. `SHARE_LINK_SECRET` (16+ caracteres aleatorios) firma los enlaces públicos para compartir un viaje; sin ella, compartir responde 503. Las rutas `/admin/*` solo las usan cuentas con `rol` `moderador` o `superadmin` en `baney.usuario`. El estado verificado de cada caso de uso está en `docs/validation/2026-11-24-transport-f1-progress.md`. La fecha de avance del cronograma es el 5 de noviembre de 2026: UC-TRA-01 a UC-TRA-08 están implementados y persistidos. UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 siguen pendientes del sprint actual.
+La API protege los casos de uso con JWT firmado por `authServiceCaney`. Configura `JWT_ISSUER` y `JWT_AUDIENCE`, más `JWT_PUBLIC_KEY` para RS256 o `JWT_SECRET` para HS256. No se incluye una credencial real en el repositorio. `GOOGLE_MAPS_API_KEY` (clave de Google Maps Platform con la Routes API) da rutas por carretera, ETA con tráfico y la polilínea del recorrido en `/transport-requests/:id/route|eta`, en la ruta del transportista y en el precio estimado; sin ella, o si Google falla, el servicio usa la estimación en línea recta. `SHARE_LINK_SECRET` (16+ caracteres aleatorios) firma los enlaces públicos para compartir un viaje; sin ella, compartir responde 503. Las rutas `/admin/*` solo las usan cuentas con `rol` `moderador` o `superadmin` en `baney.usuario`. El estado verificado de cada caso de uso está en `docs/validation/2026-11-24-transport-f1-progress.md`. La fecha de avance del cronograma es el 5 de noviembre de 2026: UC-TRA-01 a UC-TRA-08 están implementados y persistidos. UC-TRA-09, UC-TRA-43, UC-TRA-44, UC-TRA-45 y UC-TRA-50 siguen pendientes del sprint actual.
 
 ## Registro de transportista (UC-TRA-19)
 
@@ -121,3 +121,13 @@ Requieren transportista **habilitado** (si no, 409).
 - `POST /carrier/requests/:id/offers` con `amount` (DOP por defecto), `currency`, `validUntil` (por defecto 24 h, máximo 7 días) y `vehicleId` opcionales (por defecto, su vehículo habilitado de mayor capacidad). Crea la oferta `SUBMITTED` y pasa la solicitud a `OFFERED` en la misma transacción. Una sola oferta vigente por transportista y solicitud (409). El cliente la ve en `GET /transport-requests/:id/offers` y la acepta con el endpoint existente.
 - `GET /carrier/offers?limit=30`: ofertas del transportista con el estado de la solicitud y, si ya inició, `tripId` (para `POST /trips/:id/tracking`).
 - `GET /carriers/me/availability`: ventana de disponibilidad vigente (`available`, `startsAt`, `endsAt`); una ventana `no_disponible` prevalece.
+
+
+## Documentación de la API (Swagger)
+
+- **Swagger UI:** `GET /docs`. En producción: `https://srv2122223.hstgr.cloud/api/transport/docs`.
+- **OpenAPI 3:** `GET /docs/openapi.json`, para importarlo en Postman o Insomnia.
+- Para probar rutas protegidas: inicia sesión en el User Service, copia el `access_token` y pégalo en **Authorize** (sin "Bearer").
+- Las rutas `/admin/*` exigen rol `moderador` o `superadmin`.
+- Ambas páginas son públicas y de solo lectura; los endpoints siguen pidiendo token. Para ocultarlas: `DOCS_ENABLED=false`.
+- Al añadir una ruta en `src/http/server.ts`, documéntala en `src/http/openapi.ts`. `openapi.spec.ts` falla si se documenta una ruta que el servidor no atiende.

@@ -9,6 +9,7 @@ export type TransportDomainEvent = DomainEvent & {
     | 'TransportMatchingStarted'
     | 'TransportRequestOffered'
     | 'TransportRequestCancelled'
+    | 'TransportRequestExpired'
     | 'TransportRequestAssignmentReleased'
     | 'TransportOfferSubmitted'
     | 'TransportOfferAccepted'

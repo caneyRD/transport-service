@@ -114,11 +114,14 @@ export class PostgresTripOperationsRepository implements TripOperationsRepositor
     const requestId=(await this.client.query('SELECT solicitud_id FROM baney.viaje WHERE id=$1',[tripId])).rows[0]?.request_id;
     if(!requestId) throw new DomainError('Trip was not found');
     const request=await this.requests.findById(requestId);
-    const result=await this.client.query(`SELECT t.*,d.usuario_uid FROM baney.viaje t JOIN baney.asignacion a ON a.id=t.asignacion_id
+    const result=await this.client.query(`SELECT t.*,d.usuario_uid,t.estado AS "tripState",COALESCE(t.salida_a_origen_en,t.iniciado_en) AS "trackFrom"
+      FROM baney.viaje t JOIN baney.asignacion a ON a.id=t.asignacion_id
       JOIN baney.perfil_transportista d ON d.id=a.perfil_transportista_id WHERE t.id=$1 AND t.eliminado_en IS NULL AND a.eliminado_en IS NULL
       AND a.estado='activa' AND d.eliminado_en IS NULL AND d.usuario_uid=$2 FOR UPDATE OF t`,[tripId,userId]);
     const row=result.rows[0];
-    if(!row || row.status!=='IN_PROGRESS' || request?.currentStatus!=='IN_PROGRESS') throw new DomainError('Only the assigned carrier can update an in-progress trip');
+    // Live GPS from the moment the carrier leaves for the pickup until delivery: the client sees it coming.
+    const moving=['hacia_origen','en_origen','cargado','en_transito','en_destino','descargado'];
+    if(!row || !moving.includes(row.tripState) || !['ASSIGNED','IN_PROGRESS'].includes(String(request?.currentStatus))) throw new DomainError('Only the assigned carrier can update an in-progress trip');
     return row;
   }
   async track(userId:string,point:TrackingPoint,sourcePointId:string) {
@@ -132,7 +135,8 @@ export class PostgresTripOperationsRepository implements TripOperationsRepositor
       if(old.trip_id!==point.tripId || Number(old.latitude)!==point.location.latitude || Number(old.longitude)!==point.location.longitude || new Date(old.recorded_at).getTime()!==point.recordedAt.getTime()) throw new DomainError('Tracking point already exists with different data');
       return old;
     }
-    if(point.recordedAt<new Date(row.started_at)) throw new DomainError('Tracking points must be chronological and after trip start');
+    // A few seconds of clock skew between the phone and the server are tolerated.
+    if(point.recordedAt.getTime()<new Date(row.trackFrom).getTime()-60_000) throw new DomainError('Tracking points must be chronological and after trip start');
     const last=await this.client.query('SELECT registrado_en FROM baney.punto_rastreo WHERE viaje_id=$1 ORDER BY registrado_en DESC LIMIT 1',[point.tripId]);
     if(last.rows[0] && point.recordedAt<new Date(last.rows[0].recorded_at)) throw new DomainError('Tracking points must be chronological');
     const trip=Trip.restore({id:row.id,requestId:row.request_id,assignmentId:row.assignment_id,status:TripStatus.IN_PROGRESS,version:await this.version(row.id)});

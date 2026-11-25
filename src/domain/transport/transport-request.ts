@@ -123,6 +123,17 @@ export class TransportRequest extends AggregateRoot {
     this.addEvent('TransportRequestCancelled', { assignmentId: this.activeAssignmentId });
     this.activeAssignmentId = undefined;
   }
+  /** True when nobody took the request and its pickup window is over (UC-TRA-44 for requests). */
+  isStale(now = new Date()): boolean {
+    return [TransportRequestStatus.DRAFT, TransportRequestStatus.OPEN, TransportRequestStatus.MATCHING, TransportRequestStatus.OFFERED].includes(this.status)
+      && this.props.timeWindow.endsAt.getTime() <= now.getTime();
+  }
+  /** Closes a request nobody took before its pickup window ended. */
+  expire(now = new Date()): void {
+    if (!this.isStale(now)) throw new DomainError('Only an unassigned request past its pickup window can expire');
+    this.transitionTo(TransportRequestStatus.CANCELLED);
+    this.addEvent('TransportRequestExpired', { endedAt: this.props.timeWindow.endsAt.toISOString() });
+  }
   releaseAssignment(): void {
     if (!this.activeAssignmentId) throw new DomainError('Transport request has no active assignment');
     this.transitionTo(TransportRequestStatus.MATCHING);

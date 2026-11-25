@@ -3,25 +3,18 @@ import { DomainError } from '../../domain/shared/domain-error';
 import { Route } from '../../domain/transport/route';
 import { Distance } from '../../domain/transport/value-objects/quantities';
 import { TransportRequestRepository } from './ports/transport-request.repository';
+import { GeodesicRouteProvider, RoutePoint, RouteProvider } from './ports/route-provider';
 
-const EARTH_RADIUS_KM = 6371;
-function haversine(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
-  const rad = (value: number) => value * Math.PI / 180;
-  const dLat = rad(b.latitude - a.latitude), dLon = rad(b.longitude - a.longitude);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
+/** UC-TRA-45/09: route and ETA of a request; from the truck's last position when it is on the way. */
 export class CalculateRouteHandler {
-  constructor(private readonly requests: TransportRequestRepository) {}
-  async execute(requestId: string): Promise<Route> {
+  constructor(private readonly requests: TransportRequestRepository, private readonly provider: RouteProvider = new GeodesicRouteProvider()) {}
+  async execute(requestId: string, from?: RoutePoint, to: 'origin' | 'destination' = 'destination'): Promise<Route> {
     if (!requestId.trim()) throw new DomainError('Transport request id is required');
     const request = await this.requests.findById(requestId);
     if (!request) throw new DomainError(`Transport request ${requestId} was not found`);
-    const distanceKm = haversine(request.props.origin, request.props.destination);
-    const distance = Math.max(distanceKm, 0.001);
-    const duration = Math.max(1, Math.ceil(distance / 40 * 60));
+    const plan = await this.provider.plan(from ?? request.props.origin, to === 'origin' ? request.props.origin : request.props.destination);
     return Route.create({ id: randomUUID(), origin: request.props.origin, destination: request.props.destination,
-      distance: Distance.create(Number(distance.toFixed(3))), estimatedDurationMinutes: duration });
+      distance: Distance.create(Math.max(plan.distanceKm, 0.001)), estimatedDurationMinutes: plan.durationMinutes,
+      polyline: plan.polyline, provider: plan.provider });
   }
 }

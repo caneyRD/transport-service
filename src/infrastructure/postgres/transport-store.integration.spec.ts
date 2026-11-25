@@ -575,7 +575,12 @@ integration('PostgreSQL transport integration', () => {
     expect(await store.execute(r=>ops(r).confirm(req.props.id,carrierId))).toMatchObject({id:confirmed.id});
     const tripId=confirmed.id;
     await expect(store.execute(r=>ops(r).evidence(tripId,carrierId,{stage:'recogida',type:'foto',url:`https://cdn.test/early-${tripId}.jpg`}))).rejects.toThrow('not allowed');
+    // Before leaving, no GPS; from "on the way to the pickup", the client sees the truck coming
+    await expect(store.execute(r=>ops(r).track(tripId,carrierId,{latitude:18.46,longitude:-69.92,recordedAt:new Date(),sourcePointId:`early-${tripId}`}))).rejects.toThrow('in-progress trip');
     await store.execute(r=>ops(r).milestone(tripId,carrierId,'DEPART_TO_ORIGIN'));
+    await store.execute(r=>ops(r).track(tripId,carrierId,{latitude:18.465,longitude:-69.915,recordedAt:new Date(),sourcePointId:`to-pickup-${tripId}`}));
+    const live=await store.execute(r=>r.tracking.findLiveByRequestId(req.props.id)) as Array<{tripState:string;latitude:string}>;
+    expect(live).toHaveLength(1); expect(live[0]).toMatchObject({tripState:'hacia_origen'}); expect(Number(live[0].latitude)).toBe(18.465);
     await expect(store.execute(r=>ops(r).milestone(tripId,carrierId,'MARK_LOADED'))).rejects.toThrow('invalid from hacia_origen');
     await store.execute(r=>ops(r).milestone(tripId,carrierId,'CHECKIN_ORIGIN'));
     await store.execute(r=>ops(r).evidence(tripId,carrierId,{stage:'recogida',type:'ticket_bascula',url:`https://cdn.test/ticket-${tripId}.jpg`,latitude:18.4,longitude:-69.9}));
@@ -747,5 +752,33 @@ integration('PostgreSQL transport integration', () => {
     const agreed=(await client.query(`SELECT o.monto AS "agreed" FROM baney.asignacion a JOIN baney.oferta_transporte o ON o.id=a.oferta_aceptada_id WHERE a.solicitud_id=$1 AND a.estado='activa'`,[req.props.id])).rows[0];
     expect(Number(agreed.agreed)).toBe(4350);
     await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:req.props.id,requesterId}));
+  });
+  it('requests nobody took before the pickup window ended expire: cancelled as "Vencida", offers expired, client told',async()=>{
+    await store.execute(r=>new ManageFleetHandler(r.fleet).availability(carrierId,true,new Date(Date.now()-7200000),new Date(Date.now()+7200000)));
+    const make=()=>store.execute(r=>new CreateTransportRequestHandler(r.requests).execute({...command(),timeWindow:{startsAt:new Date(Date.now()+60000),endsAt:new Date(Date.now()+7200000)}}));
+    const stale=await make(), withOffer=await make(), fresh=await make(), assigned=await make();
+    await store.execute(r=>carrierH(r).offer(carrierId,withOffer.props.id,{amount:3000}));
+    const taken=await store.execute(r=>carrierH(r).offer(carrierId,assigned.props.id,{amount:3100}));
+    await store.execute(r=>new AcceptOfferHandler(r.requests,r.offers).execute({requestId:assigned.props.id,requesterId,offerId:taken.id}));
+    // The pickup window of three of them ended yesterday
+    await client.query(`UPDATE baney.solicitud_transporte SET ventana_recogida_desde=now()-interval '26 hours',ventana_recogida_hasta=now()-interval '24 hours' WHERE id = ANY($1::uuid[])`,[[stale.props.id,withOffer.props.id,assigned.props.id]]);
+    const expired=await store.execute(r=>r.requests.expireStale!(requesterId));
+    expect(expired.sort()).toEqual([stale.props.id,withOffer.props.id].sort());
+    const state=async(id:string)=>(await client.query(`SELECT estado AS "requestState",motivo_cancelacion AS "reason",cancelado_en IS NOT NULL AS "closed" FROM baney.solicitud_transporte WHERE id=$1`,[id])).rows[0];
+    expect(await state(stale.props.id)).toMatchObject({requestState:'cancelada',closed:true,reason:expect.stringMatching(/^Vencida/)});
+    expect((await state(fresh.props.id)).requestState).not.toBe('cancelada');
+    expect((await state(assigned.props.id)).requestState).toBe('asignada');
+    expect((await client.query(`SELECT estado AS "offerState" FROM baney.oferta_transporte WHERE solicitud_id=$1`,[withOffer.props.id])).rows[0].offerState).toBe('expirada');
+    const events=(await client.query(`SELECT tipo_evento AS "eventType" FROM baney.outbox WHERE agregado_uid=$1 ORDER BY agregado_version DESC LIMIT 1`,[stale.props.id])).rows[0];
+    expect(events.eventType).toBe('TransportRequestExpired');
+    expect((await client.query(`SELECT count(*)::int n FROM baney.notificacion WHERE usuario_uid=$1 AND plantilla_codigo='request_expired'`,[requesterId])).rows[0].n).toBe(2);
+    // The client's list marks them, and running again changes nothing
+    const mine=await store.execute(r=>r.tripHistory.requests(requesterId,100,0)) as Array<{id:string;status:string;expired?:boolean}>;
+    expect(mine.find(x=>x.id===stale.props.id)).toMatchObject({status:'CANCELLED',expired:true});
+    expect(mine.find(x=>x.id===fresh.props.id)?.expired).toBeUndefined();
+    expect(await store.execute(r=>r.requests.isExpired!(stale.props.id))).toBe(true);
+    expect(await store.execute(r=>r.requests.expireStale!())).toEqual([]);
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:assigned.props.id,requesterId}));
+    await store.execute(r=>new CancelTransportRequestHandler(r.requests).execute({requestId:fresh.props.id,requesterId}));
   });
 });

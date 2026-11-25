@@ -74,4 +74,22 @@ describe('TransportRequest', () => {
     expect(aggregate.currentStatus).toBe(TransportRequestStatus.MATCHING);
     expect(aggregate.currentAssignmentId).toBeUndefined();
   });
+
+  it('expires only while nobody took it and its pickup window is over', () => {
+    const during = new Date('2026-10-10T10:00:00Z'), after = new Date('2026-10-10T12:00:01Z');
+    const open = request();
+    open.open();
+    expect(open.isStale(during)).toBe(false);
+    expect(() => open.expire(during)).toThrow(DomainError);
+    expect(open.isStale(after)).toBe(true);
+    open.expire(after);
+    expect(open.currentStatus).toBe(TransportRequestStatus.CANCELLED);
+    expect(open.pullDomainEvents().at(-1)?.type).toBe('TransportRequestExpired');
+    const assigned = request();
+    assigned.open();
+    assigned.markOffered();
+    assigned.assign('assignment-1');
+    expect(assigned.isStale(after)).toBe(false);
+    expect(() => assigned.expire(after)).toThrow('Only an unassigned request');
+  });
 });

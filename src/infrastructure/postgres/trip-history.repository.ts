@@ -15,7 +15,7 @@ export class PostgresTripHistoryRepository implements TripHistoryRepository {
     const result=await this.client.query(`SELECT r.id,r.estado,r.creado_en AS "createdAt",
       r.origen_direccion AS "originAddress",r.origen_latitud::float8 AS "originLatitude",r.origen_longitud::float8 AS "originLongitude",
       r.destino_direccion AS "destinationAddress",r.destino_latitud::float8 AS "destinationLatitude",r.destino_longitud::float8 AS "destinationLongitude",
-      r.ventana_recogida_desde AS "startsAt",r.ventana_recogida_hasta AS "endsAt",
+      r.ventana_recogida_desde AS "startsAt",r.ventana_recogida_hasta AS "endsAt",r.motivo_cancelacion AS "cancelReason",
       c.descripcion AS "cargoDescription",c.tipo_carga,c.peso_kg::float8 AS "weightKg",c.volumen_m3::float8 AS "volumeM3"
       FROM baney.solicitud_transporte r JOIN baney.carga c ON c.solicitud_id=r.id AND c.eliminado_en IS NULL
       WHERE r.solicitante_uid=$1 AND r.eliminado_en IS NULL
@@ -24,6 +24,7 @@ export class PostgresTripHistoryRepository implements TripHistoryRepository {
       cargo:{ description:row.cargoDescription, type:row.cargo_type ?? null, weightKg:row.weightKg ?? undefined, volumeM3:row.volumeM3 ?? undefined },
       origin:{ address:row.originAddress, latitude:row.originLatitude, longitude:row.originLongitude },
       destination:{ address:row.destinationAddress, latitude:row.destinationLatitude, longitude:row.destinationLongitude },
-      timeWindow:{ startsAt:row.startsAt, endsAt:row.endsAt } }));
+      timeWindow:{ startsAt:row.startsAt, endsAt:row.endsAt },
+      ...(typeof row.cancelReason==='string' && row.cancelReason.startsWith('Vencida') ? { expired:true } : {}) }));
   }
 }

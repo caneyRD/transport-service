@@ -7,6 +7,7 @@ import { VehicleBodyType, VehicleCapacityUnit } from '../domain/transport/vehicl
 import { CarrierRepository, RegisterCarrierHandler } from '../application/transport/register-carrier';
 import { BackhaulInput, CarrierRequestRepository, CarrierRequestsHandler } from '../application/transport/carrier-requests';
 import { createServer, IncomingMessage } from 'node:http';
+import { TransportRequestStatus } from '../domain/transport/transport-request';
 import { CreateTransportRequestHandler } from '../application/transport/create-transport-request';
 import { SelectCargoTypeHandler } from '../application/transport/select-cargo-type';
 import { FindNearbyTrucksHandler } from '../application/transport/find-nearby-trucks';
@@ -23,11 +24,13 @@ import { DomainError } from '../domain/shared/domain-error';
 import { TransportRequest } from '../domain/transport/transport-request';
 import { TransportOffer } from '../domain/transport/transport-offer';
 import { CargoType } from '../domain/transport/cargo';
+import { openApiDocument, swaggerHtml } from './openapi';
 import { Authenticate, HttpError } from './auth';
 import { CarrierDocumentContentType, CarrierDocumentType, CarrierDocumentsHandler } from '../application/transport/carrier-documents';
 import { CarrierApprovalHandler, REVIEWER_ROLES, ReviewerRequiredError } from '../application/transport/carrier-approval';
 import { CommissionType, TransportAdminHandler } from '../application/transport/transport-admin';
 import { ClientServicesHandler } from '../application/transport/client-services';
+import { GeodesicRouteProvider, RouteProvider } from '../application/transport/ports/route-provider';
 import { CarrierFinanceHandler } from '../application/transport/carrier-finance';
 import { DisputeReason, TransportDisputesHandler } from '../application/transport/disputes';
 import { TransportNotificationsHandler } from '../application/transport/notifications';
@@ -127,8 +130,9 @@ export function tokenRole(authorization: string | undefined): string {
   } catch { return ''; }
 }
 
-export function createTransportServer(store: TransportStore, authenticate: Authenticate, options: { shareSecret?: string } = {}) {
-  const services=(r:Repositories)=>{ if(!r.clientServices) throw new HttpError(503,'Client services are not configured'); return new ClientServicesHandler(r.clientServices,options.shareSecret); };
+export function createTransportServer(store: TransportStore, authenticate: Authenticate, options: { shareSecret?: string; routes?: RouteProvider; /** Swagger UI at /docs (on unless false) */ docs?: boolean } = {}) {
+  const routes=options.routes ?? new GeodesicRouteProvider();
+  const services=(r:Repositories)=>{ if(!r.clientServices) throw new HttpError(503,'Client services are not configured'); return new ClientServicesHandler(r.clientServices,options.shareSecret,routes); };
   return createServer(async (request, response) => {
     const send = (status: number, data: unknown) => {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -141,6 +145,12 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         catch { send(503, { service: 'transport-service', status: 'unavailable', database: 'disconnected' }); }
         return;
       }
+      // API documentation (public, read-only): Swagger UI and the OpenAPI document it renders.
+      if (request.method === 'GET' && options.docs !== false && (url.pathname === '/docs' || url.pathname === '/docs/')) {
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        response.end(swaggerHtml); return;
+      }
+      if (request.method === 'GET' && options.docs !== false && url.pathname === '/docs/openapi.json') { send(200, openApiDocument()); return; }
       if (request.method === 'GET' && url.pathname === '/') {
         send(200, { service: 'transport-service', message: 'Backend de Transporte BANEY activo' }); return;
       }
@@ -280,7 +290,11 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       if (url.pathname === '/transport-requests' && request.method === 'GET') {
         const limit=url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 25;
         const offset=url.searchParams.has('offset') ? Number(url.searchParams.get('offset')) : 0;
-        send(200,await store.execute(r=>new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,limit,offset))); return;
+        send(200,await store.execute(async r=>{
+          // Requests nobody took in time are closed before listing (also done by the periodic sweep).
+          await r.requests.expireStale?.(requesterId);
+          return new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory).myRequests(requesterId,limit,offset);
+        })); return;
       }
       const fleetParts = url.pathname.split('/').filter(Boolean);
       if(fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && fleetParts[3]==='confirm' && request.method==='POST') {
@@ -394,13 +408,13 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
       }
       if (fleetParts.length===4 && fleetParts[0]==='carrier' && fleetParts[1]==='requests' && ['cargo','route','distance'].includes(fleetParts[3]) && request.method==='GET') {
         const data=await store.execute(async r=>{
-          const queries=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory);
+          const queries=new TransportQueries(r.requests,r.offers,r.fleet,r.tripHistory,routes);
           if(fleetParts[3]==='cargo') {
             const request=await queries.carrierRequest(fleetParts[2],requesterId);
             return requestDto(request).cargo;
           }
           const route=await queries.route(fleetParts[2],requesterId);
-          return {origin:route.origin,destination:route.destination,distanceKm:route.distance.value,estimatedDurationMinutes:route.estimatedDurationMinutes,provider:'GEODESIC_ESTIMATE'};
+          return {origin:route.origin,destination:route.destination,distanceKm:route.distance.value,estimatedDurationMinutes:route.estimatedDurationMinutes,provider:route.provider,polyline:route.polyline};
         });
         send(200,data);return;
       }
@@ -435,6 +449,7 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
         }
         if (parts.length < 2) throw new HttpError(404, 'Route not found');
         const requestId = parts[1];
+        if (request.method === 'GET') await requests.expireStale?.(requesterId);
         const owned = await requests.findById(requestId);
         if (!owned) throw new HttpError(404, 'Transport request was not found');
         if (owned.props.requesterId !== requesterId) throw new HttpError(403, 'Only the request owner can access this request');
@@ -461,7 +476,7 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
           else changes.timeWindow={startsAt:date(body.startsAt,'startsAt'),endsAt:date(body.endsAt,'endsAt')};
           return {status:200,data:requestDto(await new ReviseRequestHandler(requests).execute(requestId,requesterId,changes))};
         }
-        if (parts.length === 2 && request.method === 'GET') return { status: 200, data: requestDto(owned) };
+        if (parts.length === 2 && request.method === 'GET') return { status: 200, data: { ...requestDto(owned), ...(owned.currentStatus === TransportRequestStatus.CANCELLED && await requests.isExpired?.(requestId) ? { expired: true } : {}) } };
         if (parts.length === 3 && parts[2] === 'cargo-type' && request.method === 'PATCH') {
           const type = text(body.type, 'type') as CargoType;
           return { status: 200, data: requestDto(await new SelectCargoTypeHandler(requests).execute({ requestId, type })) };
@@ -477,9 +492,16 @@ export function createTransportServer(store: TransportStore, authenticate: Authe
           return { status: 200, data };
         }
         if (parts.length === 3 && (parts[2] === 'route' || parts[2] === 'eta') && request.method === 'GET') {
-          const route = await new CalculateRouteHandler(requests).execute(requestId);
+          // ETA (UC-TRA-09): once the truck sends GPS, from its last position to the destination.
+          const live = parts[2] === 'eta' ? (await tracking.findLiveByRequestId(requestId)) as Array<{ latitude?: unknown; longitude?: unknown; tripState?: string }> : [];
+          const last = live[0];
+          const from = last && Number.isFinite(Number(last.latitude)) && Number.isFinite(Number(last.longitude)) ? { latitude: Number(last.latitude), longitude: Number(last.longitude) } : undefined;
+          // While the truck goes to the pickup, the ETA is to the pickup; once loaded, to the destination.
+          const leg = from && ['hacia_origen', 'en_origen'].includes(String(last?.tripState)) ? 'PICKUP' : 'DELIVERY';
+          const route = await new CalculateRouteHandler(requests, routes).execute(requestId, from, leg === 'PICKUP' ? 'origin' : 'destination');
           return { status: 200, data: { routeId: route.id, distanceKm: route.distance.value,
-            estimatedDurationMinutes: route.estimatedDurationMinutes, calculatedAt: new Date().toISOString() } };
+            estimatedDurationMinutes: route.estimatedDurationMinutes, calculatedAt: new Date().toISOString(),
+            provider: route.provider, polyline: route.polyline, from: from ? 'TRUCK' : 'ORIGIN', leg } };
         }
         if (parts.length === 3 && parts[2] === 'tracking' && request.method === 'GET') {
           return { status: 200, data: await tracking.findLiveByRequestId(requestId) };

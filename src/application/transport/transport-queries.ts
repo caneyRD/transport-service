@@ -5,6 +5,7 @@ import { TransportRequestRepository } from './ports/transport-request.repository
 import { TransportOfferRepository } from './ports/transport-offer.repository';
 import { FleetRepository } from './manage-fleet';
 import { CalculateRouteHandler } from './calculate-route';
+import { RouteProvider } from './ports/route-provider';
 import { ViewReceivedOffersHandler } from './view-received-offers';
 export interface TripHistoryRepository {
   history(userId:string,limit:number,offset:number):Promise<unknown[]>;
@@ -12,7 +13,7 @@ export interface TripHistoryRepository {
   requests(userId:string,limit:number,offset:number):Promise<unknown[]>;
 }
 export class TransportQueries {
-  constructor(private readonly requests:TransportRequestRepository,private readonly offers:TransportOfferRepository,private readonly fleet:FleetRepository,private readonly trips:TripHistoryRepository) {}
+  constructor(private readonly requests:TransportRequestRepository,private readonly offers:TransportOfferRepository,private readonly fleet:FleetRepository,private readonly trips:TripHistoryRepository,private readonly routes?:RouteProvider) {}
   async history(userId:string,limit=25,offset=0) {
     if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0) throw new DomainError('Invalid history pagination');
     return this.trips.history(userId,limit,offset);
@@ -34,6 +35,6 @@ export class TransportQueries {
   }
   async route(requestId:string,userId:string) {
     await this.carrierRequest(requestId,userId);
-    return new CalculateRouteHandler(this.requests).execute(requestId);
+    return new CalculateRouteHandler(this.requests,this.routes).execute(requestId);
   }
 }
