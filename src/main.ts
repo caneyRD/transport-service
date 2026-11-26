@@ -40,7 +40,11 @@ async function main(): Promise<void> {
   const sweep = setInterval(() => {
     store.execute(r => r.requests.expireStale ? r.requests.expireStale() : Promise.resolve([] as string[]))
       .then(ids => { if (ids.length) console.log(`expired ${ids.length} transport request(s)`); })
-      .catch(() => console.error('Expiring stale requests failed'));
+      .catch(error => console.error(`Expiring stale requests failed: ${error instanceof Error ? error.message : String(error)}`));
+    // Freight of delivered trips whose settlement failed at delivery time (idempotent retry).
+    store.execute(r => r.operations.settlePending ? r.operations.settlePending() : Promise.resolve([] as string[]))
+      .then(ids => { if (ids.length) console.log(`settled ${ids.length} delivered trip(s)`); })
+      .catch(error => console.error(`Settling delivered trips failed: ${error instanceof Error ? error.message : String(error)}`));
   }, 5 * 60_000);
   sweep.unref();
   const shutdown = () => { clearInterval(sweep); server.close(() => { void store.close(); }); };

@@ -6,3 +6,6 @@ coverage/
 !.env.example
 *.log
 tmp/live-transport-schema.json
+
+# Adjuntos locales de herramientas (pueden contener credenciales): nunca al repo
+.codex-attachments/

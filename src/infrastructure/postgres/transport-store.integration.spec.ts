@@ -386,6 +386,40 @@ integration('PostgreSQL transport integration', () => {
     await store.execute(r=>new TripOperationsHandler(r.operations).verifyDeliveryOtp(tripId,carrierId,otp));
   }
 
+  it('without permission on the payments table the delivery is still confirmed (payment capture is left pending)',async()=>{
+    const {tripId}=await startedTrip();
+    // Production: Transport's database role may not write baney.pago (it belongs to Payments)
+    await client.query(`CREATE OR REPLACE FUNCTION pg_temp.sin_permiso_pago() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'permission denied for table pago' USING ERRCODE='42501'; END $f$`);
+    await client.query(`CREATE TRIGGER tmp_sin_permiso BEFORE UPDATE ON baney.pago FOR EACH ROW EXECUTE FUNCTION pg_temp.sin_permiso_pago()`);
+    await client.query(`INSERT INTO baney.pago(pagador_uid,concepto,viaje_id,metodo,proveedor,monto,idempotency_key,estado) VALUES($1,'viaje',$2,'transferencia','banco',4200,$3,'autorizado')`,[requesterId,tripId,`pay-${tripId}`]);
+    const log=jest.spyOn(console,'error').mockImplementation(()=>undefined);
+    await deliver(tripId);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`payment capture pending for trip ${tripId}: permission denied for table pago`));
+    expect((await client.query(`SELECT estado AS "tripState" FROM baney.viaje WHERE id=$1`,[tripId])).rows[0].tripState).toBe('entregado');
+    expect((await client.query(`SELECT estado AS "payState" FROM baney.pago WHERE viaje_id=$1`,[tripId])).rows[0].payState).toBe('autorizado');
+    log.mockRestore();
+    await client.query('DROP TRIGGER tmp_sin_permiso ON baney.pago');
+  });
+  it('a failing settlement does not undo the delivery: the trip is delivered, the carrier freed, and the freight is credited later',async()=>{
+    const {requestId,tripId}=await startedTrip();
+    // Simulates a production ledger that rejects the freight entry for this trip
+    await client.query(`ALTER TABLE baney.movimiento ADD CONSTRAINT tmp_sin_flete CHECK (viaje_id IS DISTINCT FROM '${tripId}'::uuid) NOT VALID`);
+    const log=jest.spyOn(console,'error').mockImplementation(()=>undefined);
+    await deliver(tripId);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`settlement pending for trip ${tripId}`));
+    const state=(await client.query(`SELECT t.estado AS "tripState",a.estado AS "assignmentState",r.estado AS "requestState" FROM baney.viaje t JOIN baney.asignacion a ON a.id=t.asignacion_id JOIN baney.solicitud_transporte r ON r.id=t.solicitud_id WHERE t.id=$1`,[tripId])).rows[0];
+    expect(state).toEqual({tripState:'entregado',assignmentState:'completada',requestState:'completada'});
+    const freight=async()=>(await client.query(`SELECT count(*)::int n FROM baney.movimiento WHERE viaje_id=$1 AND tipo='flete'`,[tripId])).rows[0].n;
+    expect(await freight()).toBe(0);
+    // Still broken: the sweep keeps it pending; fixed: the sweep credits it once
+    expect(await store.execute(r=>r.operations.settlePending())).not.toContain(tripId);
+    await client.query('ALTER TABLE baney.movimiento DROP CONSTRAINT tmp_sin_flete');
+    expect(await store.execute(r=>r.operations.settlePending())).toContain(tripId);
+    expect(await store.execute(r=>r.operations.settlePending())).not.toContain(tripId);
+    expect(await freight()).toBe(1);
+    log.mockRestore();
+    void requestId;
+  });
   it('trip lifecycle: OTP to the client, milestones, evidence, payment capture, delivery frees the carrier, ratings',async()=>{
     const {requestId,tripId}=await startedTrip();
     const ops=(r:R)=>new TripOperationsHandler(r.operations);

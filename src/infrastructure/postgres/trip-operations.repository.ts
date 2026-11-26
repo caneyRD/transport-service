@@ -79,8 +79,48 @@ export class PostgresTripOperationsRepository implements TripOperationsRepositor
     const request=await this.requests.findById(requestId);
     if(!request) throw new DomainError('Transport request was not found');
     if(request.currentStatus==='IN_PROGRESS') { request.complete(); await this.requests.save(request); }
-    await this.settle(tripId);
     await this.client.query(`UPDATE baney.asignacion SET estado='completada',completado_en=now() WHERE solicitud_id=$1 AND estado='activa' AND eliminado_en IS NULL`,[requestId]);
+    await this.settleSafely(tripId);
+  }
+  /**
+   * Paying the carrier must never undo a confirmed delivery: if the ledger write fails, the delivery stands,
+   * the cause is logged and settlePending() retries it (idempotent) from the periodic sweep.
+   */
+  private async settleSafely(tripId:string) {
+    await this.client.query('SAVEPOINT settle_trip');
+    try {
+      await this.settle(tripId);
+      await this.client.query('RELEASE SAVEPOINT settle_trip');
+      return true;
+    } catch (error) {
+      await this.client.query('ROLLBACK TO SAVEPOINT settle_trip');
+      console.error(`[transport] settlement pending for trip ${tripId}: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+  /**
+   * Capturing the client's authorized payment belongs to Payments; Transport only asks for it at delivery.
+   * Without permission on baney.pago (its own database role) or on any failure, the delivery still stands.
+   */
+  private async capturePaymentSafely(tripId:string) {
+    await this.client.query('SAVEPOINT capture_payment');
+    try {
+      await this.client.query(`UPDATE baney.pago SET estado='capturado',monto_capturado=monto,capturado_en=COALESCE(capturado_en,now()),actualizado_en=now() WHERE viaje_id=$1 AND estado IN ('autorizado','preautorizado')`,[tripId]);
+      await this.client.query('RELEASE SAVEPOINT capture_payment');
+    } catch (error) {
+      await this.client.query('ROLLBACK TO SAVEPOINT capture_payment');
+      console.error(`[transport] payment capture pending for trip ${tripId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  /** Delivered trips (last 60 days) whose freight was not credited yet. Returns the ids settled now. */
+  async settlePending(limit=50):Promise<string[]> {
+    const pending=await this.client.query(`SELECT t.id AS "tripId" FROM baney.viaje t
+      WHERE t.estado='entregado' AND t.eliminado_en IS NULL AND t.monto_acordado>0 AND t.entregado_en > now()-interval '60 days'
+        AND NOT EXISTS (SELECT 1 FROM baney.movimiento m WHERE m.viaje_id=t.id AND m.tipo='flete')
+      ORDER BY t.entregado_en LIMIT $1 FOR UPDATE OF t SKIP LOCKED`,[limit]);
+    const settled:string[]=[];
+    for (const row of pending.rows) if (await this.settleSafely(row.tripId)) settled.push(row.tripId);
+    return settled;
   }
   /**
    * UC-TRA-48/156: credits the carrier's account with the freight and debits BANEY's commission
@@ -246,7 +286,7 @@ export class PostgresTripOperationsRepository implements TripOperationsRepositor
       return { delivered:false, attemptsRemaining:Math.max(0,5-Number(attempts.rows[0].otp_entrega_intentos)) };
     }
     const result=await this.client.query(`UPDATE baney.viaje SET estado='entregado',entregado_en=COALESCE(entregado_en,now()),recibido_por_nombre=$2,recibido_por_documento=$3,actualizado_en=now(),version_fila=version_fila+1 WHERE id=$1 RETURNING *`,[tripId,recipientName ?? null,recipientDocument ?? null]);
-    await this.client.query(`UPDATE baney.pago SET estado='capturado',monto_capturado=monto,capturado_en=COALESCE(capturado_en,now()),actualizado_en=now() WHERE viaje_id=$1 AND estado IN ('autorizado','preautorizado')`,[tripId]);
+    await this.capturePaymentSafely(tripId);
     await this.client.query(`INSERT INTO baney.viaje_evento(id,viaje_id,estado_anterior,estado_nuevo,tipo_evento,actor_uid) VALUES($1,$2,$3,'entregado','DELIVERY_OTP_VERIFIED',$4)`,[randomUUID(),tripId,row.tripState,userId]);
     await this.finishDelivery(row.requestId,tripId);
     return result.rows[0];

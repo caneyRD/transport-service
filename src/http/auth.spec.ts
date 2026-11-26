@@ -77,3 +77,19 @@ describe('JWT interoperability with the User Service', () => {
     await expect(rs(`Bearer ${hs256(claims())}`)).rejects.toMatchObject({ reason: 'algorithm' });
   });
 });
+
+// Contract with the User Service (user_service_admin): this token was issued by its own JwtTokenIssuer
+// (PyJWT, tests/infrastructure/test_jwt_service_contract.py values; test-only key, expires in ~100 years).
+describe('User Service token contract', () => {
+  const issuedByUserService = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiM2I0MjM5Yy02YWFjLTQ4NzktODY0My1jMzRiNGI4ZDY3ZGMiLCJyb2xlIjoidXN1YXJpbyIsImlhdCI6MTc5NTYzODE0MCwiZXhwIjo0OTQ5MjM4MTQwLCJpc3MiOiJodHRwczovL2JhbmV5LnRlc3QvYXBpL3VzZXJzIiwiYXVkIjoiYmFuZXktYXBpIiwic2lkIjoic2Vzcy1jb250cmFjdCJ9.DBCjcR-rzArYBfaYzGrnPrah5avvddXGAgr0Ho0MSO4';
+  const authenticate = jwtAuthenticator({ secret: 'test-shared-key-with-at-least-32-characters', issuer: 'https://baney.test/api/users', audience: 'baney-api' });
+  it('accepts a token issued by the User Service JwtTokenIssuer with the same key, issuer and audience', async () => {
+    expect(await authenticate(`Bearer ${issuedByUserService}`)).toBe('b3b4239c-6aac-4879-8643-c34b4b8d67dc');
+  });
+  it('a different key, issuer or audience on the Transport side is told apart', async () => {
+    const reason = (cfg: { secret: string; issuer: string; audience: string }) => jwtAuthenticator(cfg)(`Bearer ${issuedByUserService}`).catch((e: { reason?: string }) => e.reason);
+    expect(await reason({ secret: 'another-key-with-at-least-32-characters!!', issuer: 'https://baney.test/api/users', audience: 'baney-api' })).toBe('signature');
+    expect(await reason({ secret: 'test-shared-key-with-at-least-32-characters', issuer: 'https://other/api/users', audience: 'baney-api' })).toBe('issuer');
+    expect(await reason({ secret: 'test-shared-key-with-at-least-32-characters', issuer: 'https://baney.test/api/users', audience: 'other-api' })).toBe('audience');
+  });
+});
